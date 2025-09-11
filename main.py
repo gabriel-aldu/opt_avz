@@ -1,15 +1,16 @@
 from gurobipy import Model, GRB, quicksum
+from soc_visualizer import soc_timeseries_for_bus
 
 def build_model(data, sense=GRB.MINIMIZE):
 
     # ---------------------
     # SETS (as in your data)
     # ---------------------
-    N      = data['BIG_N']        # all terminals (list/iterable of i)
+    N      = data['N']        # all terminals (list/iterable of i)
     D      = data['D']            # depots (list/iterable of d)
     K      = data['K']            # lines (list/iterable of k)
 
-    N_k    = data['N']            # dict: N_k[k] -> list of terminals on line k
+    N_k    = data['N_k']            # dict: N_k[k] -> list of terminals on line k
     A_k    = data['A_k']          # dict: A_k[k] -> list of arcs (i,j) on line k
     M      = data['M']            # dict: M[k]   -> list of buses m on line k
     L_km   = data['L']            # dict: L_km[(m,k)] -> list of trips/loops l for bus m on line k
@@ -303,7 +304,7 @@ def build_model(data, sense=GRB.MINIMIZE):
 # -------------------------
 if __name__ == "__main__":
     # One depot, one line, one bus, two terminals, two loops (toy)
-    BIG_N = ["A", "B"]
+    N = ["A", "B"]
     D     = ["D1"]
     K     = ["L1"]
 
@@ -317,22 +318,48 @@ if __name__ == "__main__":
     d_k   = {"L1": ["D1"]}                  # list to allow multi-depot lines
 
     # Time partitions
-    PHI   = [1,2,3,4]
-    H     = [1,2]
-    H_peak= [2]
-    Z     = [1,2]
-    Z_peak= [2]
-    PHI_h = {1:[1,2], 2:[3,4]}
-    PHI_z = {1:[1,2], 2:[3,4]}
+    # -------------------------
+    # 24h time sets (configurable resolution)
+    # -------------------------
+    RES_MIN = 60          # change to 15, 5, or 1 for finer grids
+    H = list(range(24))   # hours 0..23
+    SLOTS_PER_HOUR = 60 // RES_MIN
+    T = 24 * SLOTS_PER_HOUR
 
-    # Idling windows
-    PHI_term = {
-        ("A","L1","B1",1): [1],
-        ("B","L1","B1",1): [2],
-        ("A","L1","B1",2): [3],
-        ("B","L1","B1",2): [4],
+    # Discrete time points Φ = {1..T} (1-based labels)
+    PHI = list(range(1, T + 1))
+
+    # Map each hour h to its Φ-indices inside that hour
+    # hour 0 gets indices 1..SLOTS_PER_HOUR, hour 1 gets next block, etc.
+    PHI_h = {
+        h: list(range(h * SLOTS_PER_HOUR + 1, (h + 1) * SLOTS_PER_HOUR + 1))
+        for h in H
     }
-    PHI_depo = {("L1","B1"): [1,2]}
+
+    # Demand periods Z: use hours as demand periods (paper-compatible)
+    Z = H[:]                       # Z = {0..23}
+    PHI_z = {z: PHI_h[z] for z in Z}
+
+    # Pick on-peak hour set (example: 16:00–21:00)
+    ON_PEAK_HOURS = {16, 17, 18, 19, 20, 21}
+    H_peak = list(ON_PEAK_HOURS)
+    Z_peak = list(ON_PEAK_HOURS)   # same periods as hours in this setup
+
+    # Time-step weight ρ and averaging divisor γ for Eq. (39)–(40)
+    # In your model you use (1/γ) * Σ (p * ρ). With hourly slots, ρ=1 and γ=SLOTS_PER_HOUR=1.
+    rho = 1.0
+    gamma = SLOTS_PER_HOUR
+
+    PHI_term = {
+    ("A", "L1", "B1", 1): PHI_h[8],   # all slots in 08:00–09:00
+    ("B", "L1", "B1", 2): PHI_h[17],  # all slots in 17:00–18:00
+    # add more windows as needed...
+    }
+
+    # Example depot idling: same bus idles at the depot in hours 0 and 23
+    PHI_depo = {
+        ("L1", "B1"): PHI_h[0] + PHI_h[23]
+    }
 
     # Params
     rho = 1.0
@@ -352,8 +379,8 @@ if __name__ == "__main__":
     p_depo_cap  = {"D1": 130.0}
 
     # Efficiencies
-    theta_on_route = 0.90
-    theta_depo     = 0.90
+    theta_on_route = 0.9
+    theta_depo     = 0.9
 
     # Prices
     psi_on, psi_off = 0.050209, 0.033889   # $/kWh
@@ -361,7 +388,7 @@ if __name__ == "__main__":
     omega = 1.0/30.0
 
     data = dict(
-        BIG_N=BIG_N, D=D, K=K, N=N_k, A_k=A_k, M=M, L=L_km,
+        N=N, D=D, K=K, N_k=N_k, A_k=A_k, M=M, L=L_km,
         PHI=PHI, Z=Z, H=H, Z_peak=Z_peak, H_peak=H_peak, PHI_h=PHI_h, PHI_z=PHI_z,
         PHI_term=PHI_term, PHI_depo=PHI_depo,
         d_k=d_k, o_k=o_k, rho=rho, u_k=u_k, soc_up=soc_up, soc_low=soc_low,
@@ -375,5 +402,11 @@ if __name__ == "__main__":
     model = build_model(data)
     model.Params.OutputFlag = 1
     model.optimize()
+
+    plots_dir = "plots/"
+    file_name = "toy_example"
+    dir = plots_dir + file_name
     if model.status == GRB.OPTIMAL:
+        soc_timeseries_for_bus(model, data, k = "L1", m = "B1", make_plot=True, dir_name=dir)
         print(f"Optimal objective = {model.objVal:.6f}")
+        model.write("solucion.sol")
