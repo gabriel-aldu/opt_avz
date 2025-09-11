@@ -1,5 +1,4 @@
 from gurobipy import Model, GRB, quicksum
-from soc_visualizer import soc_timeseries_for_bus
 
 def build_model(data, sense=GRB.MINIMIZE):
 
@@ -321,10 +320,11 @@ if __name__ == "__main__":
     # -------------------------
     # 24h time sets (configurable resolution)
     # -------------------------
+    HOURS = 4
     RES_MIN = 60          # change to 15, 5, or 1 for finer grids
-    H = list(range(24))   # hours 0..23
+    H = list(range(HOURS))   # hours 0..23
     SLOTS_PER_HOUR = 60 // RES_MIN
-    T = 24 * SLOTS_PER_HOUR
+    T = HOURS * SLOTS_PER_HOUR
 
     # Discrete time points Φ = {1..T} (1-based labels)
     PHI = list(range(1, T + 1))
@@ -351,14 +351,14 @@ if __name__ == "__main__":
     gamma = SLOTS_PER_HOUR
 
     PHI_term = {
-    ("A", "L1", "B1", 1): PHI_h[8],   # all slots in 08:00–09:00
-    ("B", "L1", "B1", 2): PHI_h[17],  # all slots in 17:00–18:00
+    ("A", "L1", "B1", 1): PHI_h[1],   # all slots in 08:00–09:00
+    ("B", "L1", "B1", 2): PHI_h[2],  # all slots in 17:00–18:00
     # add more windows as needed...
     }
 
     # Example depot idling: same bus idles at the depot in hours 0 and 23
     PHI_depo = {
-        ("L1", "B1"): PHI_h[0] + PHI_h[23]
+        ("L1", "B1"): PHI_h[0] + PHI_h[3]
     }
 
     # Params
@@ -403,10 +403,10 @@ if __name__ == "__main__":
     model.Params.OutputFlag = 1
     model.optimize()
 
-    plots_dir = "plots/"
-    file_name = "toy_example"
-    dir = plots_dir + file_name
     if model.status == GRB.OPTIMAL:
-        soc_timeseries_for_bus(model, data, k = "L1", m = "B1", make_plot=True, dir_name=dir)
         print(f"Optimal objective = {model.objVal:.6f}")
+        with open("constraints.txt", "w") as f:
+            f.write("Constraint,Slack\n")
+            for constr in model.getConstrs():
+                f.write(f"{constr.ConstrName},{constr.Slack}\n")
         model.write("solucion.sol")
