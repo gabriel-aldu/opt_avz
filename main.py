@@ -303,14 +303,14 @@ def build_model(data, sense=GRB.MINIMIZE):
 # -------------------------
 if __name__ == "__main__":
     # One depot, one line, one bus, two terminals, two loops (toy)
-    N = ["A", "B"]
+    N = ["A", "B", "C"]
     D     = ["D1"]
     K     = ["L1"]
 
-    N_k   = {"L1": ["A", "B"]}
-    A_k   = {"L1": [("A","B"), ("B","A")]}
-    M     = {"L1": ["B1"]}
-    L_km  = {("B1","L1"): [1, 2]}           # <-- note (m,k) key
+    N_k   = {"L1": ["A", "B", "C"]}
+    A_k   = {"L1": [("A","B"), ("B", "C"), ("C", "B"), ("B","A")]}
+    M     = {"L1": ["B1", "B2"]}
+    L_km  = {("B1","L1"): [1, 2], ("B2","L1"): [1, 2]}           # <-- note (m,k) key
 
     # Start terminal and depot mapping
     o_k   = {"L1": "A"}                     # scalar; model handles list too
@@ -320,7 +320,7 @@ if __name__ == "__main__":
     # -------------------------
     # 24h time sets (configurable resolution)
     # -------------------------
-    HOURS = 4
+    HOURS = 8
     RES_MIN = 60          # change to 15, 5, or 1 for finer grids
     H = list(range(HOURS))   # hours 0..23
     SLOTS_PER_HOUR = 60 // RES_MIN
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     PHI_z = {z: PHI_h[z] for z in Z}
 
     # Pick on-peak hour set (example: 16:00–21:00)
-    ON_PEAK_HOURS = {16, 17, 18, 19, 20, 21}
+    ON_PEAK_HOURS = {4}
     H_peak = list(ON_PEAK_HOURS)
     Z_peak = list(ON_PEAK_HOURS)   # same periods as hours in this setup
 
@@ -350,37 +350,71 @@ if __name__ == "__main__":
     rho = 1.0
     gamma = SLOTS_PER_HOUR
 
+    # Tener mucho cuidado con las ventanas de idling
+    # Si el gasto de energia entre nodos es muy alto (inluso de 10 kWh)
+    # Este se tiene que cargar en cada nodo en todas las ventanas posibles
     PHI_term = {
-    ("A", "L1", "B1", 1): PHI_h[1],   # all slots in 08:00–09:00
-    ("B", "L1", "B1", 2): PHI_h[2],  # all slots in 17:00–18:00
+    ("A", "L1", "B1", 1): PHI_h[1],
+    ("B", "L1", "B1", 1): PHI_h[2],
+    ("C", "L1", "B1", 1): PHI_h[3],
+    ("A", "L1", "B1", 2): PHI_h[4],
+    ("B", "L1", "B1", 2): PHI_h[5],
+    ("C", "L1", "B1", 2): PHI_h[6],
+    ("A", "L1", "B2", 1): PHI_h[1],
+    ("B", "L1", "B2", 1): PHI_h[2],
+    ("C", "L1", "B2", 1): PHI_h[3],
+    ("A", "L1", "B2", 2): PHI_h[4],
+    ("B", "L1", "B2", 2): PHI_h[5],
+    ("C", "L1", "B2", 2): PHI_h[6],
     # add more windows as needed...
     }
 
     # Example depot idling: same bus idles at the depot in hours 0 and 23
     PHI_depo = {
-        ("L1", "B1"): PHI_h[0] + PHI_h[3]
+        ("L1", "B1"): PHI_h[0] + PHI_h[7],
+        ("L1", "B2"): PHI_h[0] + PHI_h[7]
     }
 
     # Params
     rho = 1.0
-    u_k = {"L1": 330.0}
+    u_k = {"L1": 500.0}
     soc_low, soc_up = 0.2, 0.9
 
     # Energy consumptions (kWh)
-    c_depo_to_term = {("D1","A","L1","B1"): 5.0}
-    c_term_to_depo = {("A","D1","L1","B1"): 5.0}
-    c_arc = {("A","B","L1","B1",1): 10.0,
-             ("B","A","L1","B1",1): 10.0,
-             ("A","B","L1","B1",2): 10.0,
-             ("B","A","L1","B1",2): 10.0}
+    c_depo_to_term = {
+        ("D1","A","L1","B1"): 5.0,
+        ("D1","A","L1","B2"): 5.0,
+        }
+    c_term_to_depo = {
+        ("A","D1","L1","B1"): 5.0,
+        ("A","D1","L1","B2"): 5.0
+        }
+    c_arc = {
+        ("A","B","L1","B1",1): 10.0,
+        ("B","C","L1","B1",1): 10.0,
+        ("C","B","L1","B1",1): 10.0,
+        ("B","A","L1","B1",1): 10.0,
+        ("A","B","L1","B1",2): 10.0,
+        ("B","C","L1","B1",2): 10.0,
+        ("C","B","L1","B1",2): 10.0,
+        ("B","A","L1","B1",2): 10.0,
+        ("A","B","L1","B2",1): 10.0,
+        ("B","C","L1","B2",1): 10.0,
+        ("C","B","L1","B2",1): 10.0,
+        ("B","A","L1","B2",1): 10.0,
+        ("A","B","L1","B2",2): 10.0,
+        ("B","C","L1","B2",2): 10.0,
+        ("C","B","L1","B2",2): 10.0,
+        ("B","A","L1","B2",2): 10.0,
+        }
 
     # Charger caps (kW)
-    p_on_route  = {("A","L1"): 325.0, ("B","L1"): 325.0}
-    p_depo_cap  = {"D1": 130.0}
+    p_on_route  = {("A","L1"): 500.0, ("B","L1"): 500.0, ("C","L1"): 500.0}
+    p_depo_cap  = {"D1": 1500.0}
 
     # Efficiencies
-    theta_on_route = 0.9
-    theta_depo     = 0.9
+    theta_on_route = 0.99
+    theta_depo     = 0.99
 
     # Prices
     psi_on, psi_off = 0.050209, 0.033889   # $/kWh
@@ -410,3 +444,11 @@ if __name__ == "__main__":
             for constr in model.getConstrs():
                 f.write(f"{constr.ConstrName},{constr.Slack}\n")
         model.write("solucion.sol")
+
+    elif model.status == GRB.INFEASIBLE:
+        print("Model is infeasible.")
+        model.computeIIS()  # Compute irreducible infeasible set
+        model.write("model.ilp")  # Save the infeasibility set for review
+        print("Infeasible constraints saved to model.ilp")
+    else:
+        print("Model optimization failed with status:", model.status)
