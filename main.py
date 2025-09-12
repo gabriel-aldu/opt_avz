@@ -29,8 +29,8 @@ def build_model(data):
     rho = data['rho'] # Peso del paso de tiempo (1 si es horario)
 
     u_k = data['u_k'] # Capacidad de bateria para los buses de la linea k (kWh)
-    soc_up = data['soc_up'] # Cota superior de la bateria (fraccion de la capacidad)
-    soc_low = data['soc_low'] # Cota inferior de la bateria (fraccion de la capacidad)
+    epsilon_up = data['epsilon_up'] # Cota superior de la bateria (fraccion de la capacidad)
+    epsilon_low = data['epsilon_low'] # Cota inferior de la bateria (fraccion de la capacidad)
 
     c_depo_to_term = data['c_depo_to_term'] # Consumo de energia del deposito al terminal (kWh)
     c_term_to_depo = data['c_term_to_depo'] # Consumo de energia del terminal al deposito (kWh)
@@ -101,7 +101,7 @@ def build_model(data):
     print("Creando restricciones...")
     # R1: Energia inicial en el deposito
     model.addConstrs(
-        (e_depo_dep[d,k,m] == soc_up * u_k[k] for k in K for d in d_k[k] for m in M[k]),
+        (e_depo_dep[d,k,m] == epsilon_up * u_k[k] for k in K for d in d_k[k] for m in M[k]),
         name="initial_soc_depo"
     )
 
@@ -212,23 +212,23 @@ def build_model(data):
 
     # R8-11: Cotas inferiores y superiored de las baterias 
     # Cota inferior
-    model.addConstrs((e_depo_arr[d, k, m] >= soc_low * u_k[k]
+    model.addConstrs((e_depo_arr[d, k, m] >= epsilon_low * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="lb_depo_arr")
-    model.addConstrs((e_depo_dep[d, k, m] >= soc_low * u_k[k]
+    model.addConstrs((e_depo_dep[d, k, m] >= epsilon_low * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="lb_depo_dep")
-    model.addConstrs((e_term_arr[i, k, m, l] >= soc_low * u_k[k]
+    model.addConstrs((e_term_arr[i, k, m, l] >= epsilon_low * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="lb_term_arr")
-    model.addConstrs((e_term_dep[i, k, m, l] >= soc_low * u_k[k]
+    model.addConstrs((e_term_dep[i, k, m, l] >= epsilon_low * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="lb_term_dep")
 
     # Cota superior
-    model.addConstrs((e_depo_arr[d, k, m] <= soc_up * u_k[k]
+    model.addConstrs((e_depo_arr[d, k, m] <= epsilon_up * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="ub_depo_arr")
-    model.addConstrs((e_depo_dep[d, k, m] <= soc_up * u_k[k]
+    model.addConstrs((e_depo_dep[d, k, m] <= epsilon_up * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="ub_depo_dep")
-    model.addConstrs((e_term_arr[i, k, m, l] <= soc_up * u_k[k]
+    model.addConstrs((e_term_arr[i, k, m, l] <= epsilon_up * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="ub_term_arr")
-    model.addConstrs((e_term_dep[i, k, m, l] <= soc_up * u_k[k]
+    model.addConstrs((e_term_dep[i, k, m, l] <= epsilon_up * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="ub_term_dep")
 
     #  R45-48: Demanda peak 
@@ -241,7 +241,7 @@ def build_model(data):
     print("Creando funcion objetivo...")
     # Cargos por energia
     # En horas peak
-    EC_on = quicksum(
+    EC_on =  quicksum(
         psi_on * (
             quicksum(p_term[i, k, m, phi] * rho for phi in PHI_h[h] for i in N_k[k]) +
             quicksum(p_depot[d, k, m, phi] * rho for phi in PHI_h[h] for d in d_k[k])
@@ -261,13 +261,18 @@ def build_model(data):
     # Cargos por demanda
     DC = pi_on  * (quicksum(sigma_term_on[i]  for i in N) + quicksum(sigma_depo_on[d]  for d in D)) \
        + pi_off * (quicksum(sigma_term_off[i] for i in N) + quicksum(sigma_depo_off[d] for d in D))
-
     model.setObjective(EC + omega * DC, GRB.MINIMIZE)
+
+
+
     print("Modelo listo!")
     return model
 
 
 def load_data():
+    """ Se carga una instancia de datos de prueba
+        para resolver el problema y verificar su funcionamiento
+    """
     N = ["A", "B", "C"]
     D     = ["D1"]
     K     = ["L1", "L2"]
@@ -290,15 +295,14 @@ def load_data():
         ("B3","L2"): [1, 2]
         }
 
-    # Start terminal and depot mapping
     o_k   = {
         "L1": "A",
         "L2": "B"
-        }                     # scalar; model handles list too
+        }      
     d_k   = {
         "L1": ["D1"],
         "L2": ["D1"]
-        }                  # list to allow multi-depot lines
+        }                  
 
     # Parametros de tiempo
     HOURS = 24
@@ -354,7 +358,7 @@ def load_data():
         "L1": 500.0,
         "L2": 600.0
         }
-    soc_low, soc_up = 0.2, 0.9
+    epsilon_low, epsilon_up = 0.2, 0.9
 
     # Consumo de energia (kWh)
 
@@ -417,7 +421,7 @@ def load_data():
         N=N, D=D, K=K, N_k=N_k, A_k=A_k, M=M, L=L_mk,
         PHI=PHI, Z=Z, H=H, Z_peak=Z_peak, H_peak=H_peak, PHI_h=PHI_h, PHI_z=PHI_z,
         PHI_term=PHI_term, PHI_depo=PHI_depo,
-        d_k=d_k, o_k=o_k, rho=rho, u_k=u_k, soc_up=soc_up, soc_low=soc_low,
+        d_k=d_k, o_k=o_k, rho=rho, u_k=u_k, epsilon_up=epsilon_up, epsilon_low=epsilon_low,
         c_depo_to_term=c_depo_to_term, c_term_to_depo=c_term_to_depo, c_arc=c_arc,
         p_on_route=p_on_route, p_depo=p_depo_cap,
         theta_on_route=theta_on_route, theta_depo=theta_depo,
@@ -437,6 +441,7 @@ if __name__ == "__main__":
     exec_time = datetime.now().strftime("%m-%d_%H-%M")
     if model.status == GRB.OPTIMAL:
         print(f"Valor objetivo = {model.objVal:.6f}")
+
         with open(f"logs/constraints/constraints_{exec_time}.csv", "w") as f:
             f.write("Constraint,Slack\n")
             for constr in model.getConstrs():
