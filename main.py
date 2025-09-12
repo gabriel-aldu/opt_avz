@@ -1,5 +1,5 @@
 from gurobipy import Model, GRB, quicksum
-
+from datetime import datetime
 def build_model(data):
 
     print("Cargando datos...")
@@ -11,7 +11,7 @@ def build_model(data):
     N_k = data['N_k'] # Terminales en la linea k
     A_k = data['A_k'] # Arcos en la linea k
     M = data['M'] # Buses en la linea k
-    L_km = data['L'] # Viajes del bus m en la linea k
+    L_mk = data['L'] # Viajes del bus m en la linea k
 
     PHI = data['PHI'] # Tiempo discretizado
     Z = data['Z'] # Periodos de demanda
@@ -69,11 +69,11 @@ def build_model(data):
 
     # Energia en los terminales (kWh)
     e_term_arr = model.addVars(
-        [(i,k,m,l) for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]],
+        [(i,k,m,l) for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]],
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_term_arr"
     )
     e_term_dep = model.addVars(
-        [(i,k,m,l) for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]],
+        [(i,k,m,l) for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]],
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_term_dep"
     )
 
@@ -107,7 +107,7 @@ def build_model(data):
 
     # R2: Consumo del deposito al terminal (primer viaje, l=1)
     model.addConstrs(
-        (e_term_dep[o, k, m, min(L_km[(m,k)])] ==
+        (e_term_dep[o, k, m, min(L_mk[(m,k)])] ==
          e_depo_dep[d, k, m] - c_depo_to_term[(d, o, k, m)]
          for k in K for m in M[k] for d in d_k[k] for o in o_k[k]),
         name="soc_depo_to_term"
@@ -117,14 +117,14 @@ def build_model(data):
     model.addConstrs(
         (e_term_arr[j, k, m, l] ==
          e_term_dep[i, k, m, l] - c_arc[(i, j, k, m, l)]
-         for k in K for m in M[k] for l in L_km[(m,k)] for (i, j) in A_k[k]),
+         for k in K for m in M[k] for l in L_mk[(m,k)] for (i, j) in A_k[k]),
         name="soc_arc"
     )
 
     # R6: Consumo del terminal al deposito (ultimo viaje, l=max)
     model.addConstrs(
         (e_depo_arr[d, k, m] ==
-         e_term_dep[o, k, m, max(L_km[(m,k)])] - c_term_to_depo[(o, d, k, m)]
+         e_term_dep[o, k, m, max(L_mk[(m,k)])] - c_term_to_depo[(o, d, k, m)]
          for k in K for m in M[k] for d in d_k[k] for o in o_k[k]),
         name="soc_term_to_depo"
     )
@@ -134,7 +134,7 @@ def build_model(data):
         (e_term_dep[i, k, m, l] ==
          e_term_arr[i, k, m, l] +
          theta_on_route * quicksum(p_term[i, k, m, phi] * rho for phi in PHI_term.get((i, k, m, l), []))
-         for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k] if i != o_k[k]),
+         for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k] if i != o_k[k]),
         name="soc_not_o_term"
     )
 
@@ -144,7 +144,7 @@ def build_model(data):
          e_term_arr[o, k, m, l-1] +
          theta_on_route * quicksum(p_term[o, k, m, phi] * rho
                                    for phi in PHI_term.get((o, k, m, l), []))
-         for k in K for m in M[k] for l in L_km[(m,k)] if l >= 2 for o in o_k[k]),
+         for k in K for m in M[k] for l in L_mk[(m,k)] if l >= 2 for o in o_k[k]),
         name="soc_o_term"
     )
 
@@ -162,7 +162,7 @@ def build_model(data):
     for k in K:
         for m in M[k]:
             for i in N_k[k]:
-                allowed = set().union(*(set(PHI_term.get((i, k, m, l), [])) for l in L_km[(m,k)]))
+                allowed = set().union(*(set(PHI_term.get((i, k, m, l), [])) for l in L_mk[(m,k)]))
                 for phi in PHI:
                     if phi not in allowed:
                         model.addConstr(p_term[i, k, m, phi] == 0.0,
@@ -217,9 +217,9 @@ def build_model(data):
     model.addConstrs((e_depo_dep[d, k, m] >= soc_low * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="lb_depo_dep")
     model.addConstrs((e_term_arr[i, k, m, l] >= soc_low * u_k[k]
-                      for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]), name="lb_term_arr")
+                      for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="lb_term_arr")
     model.addConstrs((e_term_dep[i, k, m, l] >= soc_low * u_k[k]
-                      for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]), name="lb_term_dep")
+                      for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="lb_term_dep")
 
     # Cota superior
     model.addConstrs((e_depo_arr[d, k, m] <= soc_up * u_k[k]
@@ -227,9 +227,9 @@ def build_model(data):
     model.addConstrs((e_depo_dep[d, k, m] <= soc_up * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="ub_depo_dep")
     model.addConstrs((e_term_arr[i, k, m, l] <= soc_up * u_k[k]
-                      for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]), name="ub_term_arr")
+                      for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="ub_term_arr")
     model.addConstrs((e_term_dep[i, k, m, l] <= soc_up * u_k[k]
-                      for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]), name="ub_term_dep")
+                      for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="ub_term_dep")
 
     #  R45-48: Demanda peak 
     model.addConstrs((sigma_term_on[i]  >= eta_term[i, z] for i in N for z in Z if z in Z_peak),  name="sigma_term_on")
@@ -267,10 +267,7 @@ def build_model(data):
     return model
 
 
-
-if __name__ == "__main__":
-    # Datos minimos para testear el modelo
-
+def load_data():
     N = ["A", "B", "C"]
     D     = ["D1"]
     K     = ["L1", "L2"]
@@ -287,7 +284,7 @@ if __name__ == "__main__":
         "L1": ["B1", "B2"],
         "L2": ["B3"]
         }
-    L_km  = {
+    L_mk  = {
         ("B1","L1"): [1, 2],
         ("B2","L1"): [1, 2],
         ("B3","L2"): [1, 2]
@@ -304,8 +301,8 @@ if __name__ == "__main__":
         }                  # list to allow multi-depot lines
 
     # Parametros de tiempo
-    HOURS = 8
-    RES_MIN = 15          # Resolucion en minutos
+    HOURS = 24
+    RES_MIN = 60          # Resolucion en minutos
     H = list(range(HOURS))   
     SLOTS_PER_HOUR = 60 // RES_MIN
     T = HOURS * SLOTS_PER_HOUR
@@ -338,29 +335,18 @@ if __name__ == "__main__":
 
     # Ventanas de idling en terminales
     PHI_term = {
-    ("A", "L1", "B1", 1): PHI_h[1],
-    ("B", "L1", "B1", 1): PHI_h[2],
     ("C", "L1", "B1", 1): PHI_h[3],
-    ("A", "L1", "B1", 2): PHI_h[4],
-    ("B", "L1", "B1", 2): PHI_h[5],
     ("C", "L1", "B1", 2): PHI_h[6],
-    ("A", "L1", "B2", 1): PHI_h[1],
-    ("B", "L1", "B2", 1): PHI_h[2],
     ("C", "L1", "B2", 1): PHI_h[3],
-    ("A", "L1", "B2", 2): PHI_h[4],
-    ("B", "L1", "B2", 2): PHI_h[5],
     ("C", "L1", "B2", 2): PHI_h[6],
-    ("B", "L2", "B3", 1): PHI_h[2],
-    ("D", "L2", "B3", 1): PHI_h[3],
-    ("B", "L2", "B3", 2): PHI_h[5],
     ("D", "L2", "B3", 2): PHI_h[6]
     }
 
     # Ventanas de idling en depositos
     PHI_depo = {
-        ("L1", "B1"): PHI_h[0] + PHI_h[7],
-        ("L1", "B2"): PHI_h[0] + PHI_h[7],
-        ("L2", "B3"): PHI_h[0] + PHI_h[7],
+        ("L1", "B1"): PHI_h[7],
+        ("L1", "B2"): PHI_h[7],
+        ("L2", "B3"): PHI_h[7],
     }
 
     # Parametros de las baterias
@@ -423,12 +409,12 @@ if __name__ == "__main__":
     theta_depo     = 0.9
 
     # Precios
-    psi_on, psi_off = 0.050209, 0.033889   # $/kWh
-    pi_on,  pi_off  = 15.40, 0.0           # $/kW
+    psi_on, psi_off = 2.0, 1.0   # $/kWh
+    pi_on,  pi_off  = 15.40 * 30, 2.0 * 30          # $/kW
     omega = 1.0/30.0
 
     data = dict(
-        N=N, D=D, K=K, N_k=N_k, A_k=A_k, M=M, L=L_km,
+        N=N, D=D, K=K, N_k=N_k, A_k=A_k, M=M, L=L_mk,
         PHI=PHI, Z=Z, H=H, Z_peak=Z_peak, H_peak=H_peak, PHI_h=PHI_h, PHI_z=PHI_z,
         PHI_term=PHI_term, PHI_depo=PHI_depo,
         d_k=d_k, o_k=o_k, rho=rho, u_k=u_k, soc_up=soc_up, soc_low=soc_low,
@@ -438,22 +424,28 @@ if __name__ == "__main__":
         gamma=len(PHI_z[1]), 
         psi_on=psi_on, psi_off=psi_off, pi_on=pi_on, pi_off=pi_off, omega=omega
     )
+    return data
 
+if __name__ == "__main__":
+
+    data = load_data()
     model = build_model(data)
     model.Params.OutputFlag = 1
     model.optimize()
     print("Resolviendo modelo...")
+
+    exec_time = datetime.now().strftime("%m-%d_%H-%M")
     if model.status == GRB.OPTIMAL:
         print(f"Valor objetivo = {model.objVal:.6f}")
-        with open("constraints.txt", "w") as f:
+        with open(f"logs/constraints/constraints_{exec_time}.csv", "w") as f:
             f.write("Constraint,Slack\n")
             for constr in model.getConstrs():
                 f.write(f"{constr.ConstrName},{constr.Slack}\n")
-        model.write("solucion.sol")
+        model.write(f"logs/sols/solucion_{exec_time}.sol")
 
     elif model.status == GRB.INFEASIBLE:
         print("Modelo infactible")
         model.computeIIS()
-        model.write("model.ilp")
+        model.write(f"logs/ilps/model_{exec_time}.ilp")
     else:
         print("Modelo fallo con estado:", model.status)
