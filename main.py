@@ -1,84 +1,63 @@
 from gurobipy import Model, GRB, quicksum
 
-def build_model(data, sense=GRB.MINIMIZE):
+def build_model(data):
 
-    # ---------------------
-    # SETS (as in your data)
-    # ---------------------
-    N      = data['N']        # all terminals (list/iterable of i)
-    D      = data['D']            # depots (list/iterable of d)
-    K      = data['K']            # lines (list/iterable of k)
+    print("Cargando datos...")
+    # CONJUNTOS
+    N = data['N'] # Todo los terminales
+    D = data['D'] # Todos los depositos
+    K = data['K'] # Todas las lineas
 
-    N_k    = data['N_k']            # dict: N_k[k] -> list of terminals on line k
-    A_k    = data['A_k']          # dict: A_k[k] -> list of arcs (i,j) on line k
-    M      = data['M']            # dict: M[k]   -> list of buses m on line k
-    L_km   = data['L']            # dict: L_km[(m,k)] -> list of trips/loops l for bus m on line k
+    N_k = data['N_k'] # Terminales en la linea k
+    A_k = data['A_k'] # Arcos en la linea k
+    M = data['M'] # Buses en la linea k
+    L_km = data['L'] # Viajes del bus m en la linea k
 
-    # Time partitions
-    PHI    = data['PHI']          # all discrete time points
-    Z      = data['Z']            # demand periods
-    H      = data['H']            # hours
-    Z_peak = set(data['Z_peak'])  # subset of Z
-    H_peak = set(data['H_peak'])  # subset of H
-    PHI_h  = data['PHI_h']        # dict: PHI_h[h] -> list of phi in hour h
-    PHI_z  = data['PHI_z']        # dict: PHI_z[z] -> list of phi in demand period z
+    PHI = data['PHI'] # Tiempo discretizado
+    Z = data['Z'] # Periodos de demanda
+    H = data['H'] # Horas
+    Z_peak = set(data['Z_peak']) # Periodos de demanda peak
+    H_peak = set(data['H_peak']) # Horas peak (para costos de energia)
+    PHI_h  = data['PHI_h'] # Periodos de tiempo que pertenece a cada hora h
+    PHI_z  = data['PHI_z'] # Periodos de tiempo que pertenece a cada periodo de demanda z
+    PHI_term = data['PHI_term'] # Ventanas de idling en terminales
+    PHI_depo = data['PHI_depo'] # Ventanas de idling en depositos
 
-    # Idling windows (IMPORTANT: mappings, not global lists)
-    # - PHI_term[(i,k,m,l)] -> list of phi where (k,m) idles at terminal i in loop l
-    # - PHI_depo[(k,m)]     -> list of phi where (k,m) idles at its depot d(k)
-    PHI_term = data['PHI_term']
-    PHI_depo = data['PHI_depo']
+    # PARAMETROS
+    d_k = data['d_k'] # Depositos de la linea k
+    o_k = data['o_k'] # Terminal inicial de la linea k
+    rho = data['rho'] # Peso del paso de tiempo (1 si es horario)
 
-    # ---------------------
-    # PARAMETERS
-    # ---------------------
-    d_k     = data['d_k']          # dict: d_k[k] -> list/set of depots serving line k (often one)
-    o_k     = data['o_k']          # dict: o_k[k] -> start terminal (single i); if you store a list, take o_k[k][0]
-    rho     = data['rho']          # scalar time weight (paper writes rho); if you prefer 1, set rho=1
-    u_k     = data['u_k']          # dict: u_k[k] battery capacity (kWh)
-    soc_up  = data['soc_up']       # scalar fraction
-    soc_low = data['soc_low']      # scalar fraction
+    u_k = data['u_k'] # Capacidad de bateria para los buses de la linea k (kWh)
+    soc_up = data['soc_up'] # Cota superior de la bateria (fraccion de la capacidad)
+    soc_low = data['soc_low'] # Cota inferior de la bateria (fraccion de la capacidad)
 
-    # Energy consumptions (kWh)
-    # c_depo_to_term[(d,o,k,m)], c_term_to_depo[(o,d,k,m)], c_arc[(i,j,k,m,l)]
-    c_depo_to_term = data['c_depo_to_term']
-    c_term_to_depo = data['c_term_to_depo']
-    c_arc          = data['c_arc']
+    c_depo_to_term = data['c_depo_to_term'] # Consumo de energia del deposito al terminal (kWh)
+    c_term_to_depo = data['c_term_to_depo'] # Consumo de energia del terminal al deposito (kWh)
+    c_arc = data['c_arc'] # Consumo de energia en cada arco (kWh)
 
-    # Charger caps (kW)
-    # on-route per terminal & line: p_on_route[(i,k)]
-    # depot per depot (aggregated across its lines): p_depot_cap[d]
-    p_on_route   = data['p_on_route']
-    p_depot_cap  = data['p_depo']     # <-- your key is 'p_depo'; renamed locally to avoid shadowing a var
+    p_on_route   = data['p_on_route'] # Capacidad de los cargadores en ruta (kWh)
+    p_depot_cap  = data['p_depo'] # Capacidad de los cargadores en el deposito (kWh)
 
-    # Charging efficiencies (fractions)
-    theta_on_route = data['theta_on_route']
-    theta_depo     = data['theta_depo']
+    theta_on_route = data['theta_on_route'] # Eficiencia de los cargadores en ruta
+    theta_depo     = data['theta_depo'] # Eficiencia de los cargadores en el deposito
 
-    # Averaging divisor (paper gamma)
-    gamma = data['gamma']
+    gamma = data['gamma'] # Divisor para el promedio de potencia (|Φ_z| en el paper)
 
-    # Energy prices ($/kWh)
-    psi_on  = data['psi_on']
-    psi_off = data['psi_off']
+    psi_on  = data['psi_on'] # Precio de energia en horas peak ($/kWh)
+    psi_off = data['psi_off'] # Precio de energia fuera de  horas peak ($/kWh)
 
-    # Demand prices ($/kW)
-    pi_on  = data['pi_on']
-    pi_off = data['pi_off']
+    pi_on  = data['pi_on'] # Precio de los cargos por demanda en horas peak ($/kW)
+    pi_off = data['pi_off'] # Precio de los cargos por demanda fuera de horas peak ($/kW)
 
-    # Demand → daily factor
-    omega = data['omega']
+    omega = data['omega'] # Peso del cargo por demanda (depende de cuando de cobran estos cargos por demanda)
 
-    # ---------------------
-    # MODEL
-    # ---------------------
+    # MODELO
     model = Model("Bus_Scheduling")
-    model.ModelSense = sense
 
-    # ---------------------
     # VARIABLES
-    # ---------------------
-    # Depot energies (kWh)
+    print("Creando variables...")
+    # Energia en los depositos (kWh)
     e_depo_arr = model.addVars(
         [(d,k,m) for k in K for d in d_k[k] for m in M[k]],
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_depo_arr"
@@ -88,7 +67,7 @@ def build_model(data, sense=GRB.MINIMIZE):
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_depo_dep"
     )
 
-    # Terminal energies (kWh)
+    # Energia en los terminales (kWh)
     e_term_arr = model.addVars(
         [(i,k,m,l) for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]],
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_term_arr"
@@ -98,7 +77,7 @@ def build_model(data, sense=GRB.MINIMIZE):
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_term_dep"
     )
 
-    # Charging power (kW)
+    # Potencia de carga (kW)
     p_term = model.addVars(
         [(i,k,m,phi) for k in K for m in M[k] for i in N_k[k] for phi in PHI],
         lb=0.0, vtype=GRB.CONTINUOUS, name="p_term"
@@ -108,40 +87,33 @@ def build_model(data, sense=GRB.MINIMIZE):
         lb=0.0, vtype=GRB.CONTINUOUS, name="p_depot"
     )
 
-    # Average power per demand period (paper’s η_{i,ζ} and η_{d,ζ})
+    # Potencia promedio en periodos de demanda (kW)
     eta_term = model.addVars([(i,z) for i in N for z in Z], lb=0.0, vtype=GRB.CONTINUOUS, name="eta_term")
     eta_depo = model.addVars([(d,z) for d in D for z in Z], lb=0.0, vtype=GRB.CONTINUOUS, name="eta_depo")
 
-    # Peak power (linearized max)
+    # Potencia peak
     sigma_term_on  = model.addVars(N, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_term_on")
     sigma_term_off = model.addVars(N, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_term_off")
     sigma_depo_on  = model.addVars(D, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_depo_on")
     sigma_depo_off = model.addVars(D, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_depo_off")
 
-    # ---------------------
-    # CONSTRAINTS
-    # ---------------------
-
-    # R1: initial depot departure energy (you fixed it at SOC upper bound)
+    # RESTRICCIONES
+    print("Creando restricciones...")
+    # R1: Energia inicial en el deposito
     model.addConstrs(
         (e_depo_dep[d,k,m] == soc_up * u_k[k] for k in K for d in d_k[k] for m in M[k]),
         name="initial_soc_depo"
     )
 
-    # Helpers
-    def start_terminal(k):
-        ok = o_k[k]
-        return ok[0] if isinstance(ok, (list, tuple)) else ok
-
-    # R2: depot -> start terminal at first loop
+    # R2: Consumo del deposito al terminal (primer viaje, l=1)
     model.addConstrs(
-        (e_term_dep[start_terminal(k), k, m, min(L_km[(m,k)])] ==
-         e_depo_dep[d, k, m] - c_depo_to_term[(d, start_terminal(k), k, m)]
-         for k in K for m in M[k] for d in d_k[k]),
+        (e_term_dep[o, k, m, min(L_km[(m,k)])] ==
+         e_depo_dep[d, k, m] - c_depo_to_term[(d, o, k, m)]
+         for k in K for m in M[k] for d in d_k[k] for o in o_k[k]),
         name="soc_depo_to_term"
     )
 
-    # R3: along each arc within the same loop l
+    # R3: Consumo en cada arco (i,j) en la linea k
     model.addConstrs(
         (e_term_arr[j, k, m, l] ==
          e_term_dep[i, k, m, l] - c_arc[(i, j, k, m, l)]
@@ -149,34 +121,34 @@ def build_model(data, sense=GRB.MINIMIZE):
         name="soc_arc"
     )
 
-    # R6: end (last loop at start terminal) -> depot
+    # R6: Consumo del terminal al deposito (ultimo viaje, l=max)
     model.addConstrs(
         (e_depo_arr[d, k, m] ==
-         e_term_dep[start_terminal(k), k, m, max(L_km[(m,k)])] - c_term_to_depo[(start_terminal(k), d, k, m)]
-         for k in K for m in M[k] for d in d_k[k]),
+         e_term_dep[o, k, m, max(L_km[(m,k)])] - c_term_to_depo[(o, d, k, m)]
+         for k in K for m in M[k] for d in d_k[k] for o in o_k[k]),
         name="soc_term_to_depo"
     )
 
-    # R28: energy at terminals (i != o(k)) with on-route charging accumulation
+    # R28: Energia cargada en terminal que no sea la inicial
     model.addConstrs(
         (e_term_dep[i, k, m, l] ==
          e_term_arr[i, k, m, l] +
          theta_on_route * quicksum(p_term[i, k, m, phi] * rho for phi in PHI_term.get((i, k, m, l), []))
-         for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k] if i != start_terminal(k)),
+         for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k] if i != o_k[k]),
         name="soc_not_o_term"
     )
 
-    # R29: energy at start terminal using previous loop arrival (l >= 2)
+    # R29: Energia cargada en el terminal inicial
     model.addConstrs(
-        (e_term_dep[start_terminal(k), k, m, l] ==
-         e_term_arr[start_terminal(k), k, m, l-1] +
-         theta_on_route * quicksum(p_term[start_terminal(k), k, m, phi] * rho
-                                   for phi in PHI_term.get((start_terminal(k), k, m, l), []))
-         for k in K for m in M[k] for l in L_km[(m,k)] if l >= 2),
+        (e_term_dep[o, k, m, l] ==
+         e_term_arr[o, k, m, l-1] +
+         theta_on_route * quicksum(p_term[o, k, m, phi] * rho
+                                   for phi in PHI_term.get((o, k, m, l), []))
+         for k in K for m in M[k] for l in L_km[(m,k)] if l >= 2 for o in o_k[k]),
         name="soc_o_term"
     )
 
-    # R30: energy at depot with depot charging
+    # R30: Energia carga en el deposito
     model.addConstrs(
         (e_depo_dep[d, k, m] ==
          e_depo_arr[d, k, m] +
@@ -185,10 +157,8 @@ def build_model(data, sense=GRB.MINIMIZE):
         name="soc_depo"
     )
 
-    # R31: (already ensured by lb=0)
 
-    # R32/R33: zero terminal charging outside idling windows
-    # For each (i,k,m), compute the union of all idling phi over its loops l
+    # R32/R33: Potencia de carga en terminales donde el bus no esta idling debe ser 0
     for k in K:
         for m in M[k]:
             for i in N_k[k]:
@@ -198,16 +168,14 @@ def build_model(data, sense=GRB.MINIMIZE):
                         model.addConstr(p_term[i, k, m, phi] == 0.0,
                                         name=f"p_term_not_idle[{i},{k},{m},{phi}]")
 
-    # R34: on-route charger capacity by terminal & line
+    # R34: Consumo de potencia maxima en terminales
     model.addConstrs(
         (quicksum(p_term[i, k, m, phi] for m in M[k]) <= p_on_route[(i, k)]
          for k in K for i in N_k[k] for phi in PHI),
         name="p_term_on_route_limit"
     )
 
-    # R35: (already ensured by lb=0)
-
-    # R36: zero depot charging outside depot idling windows
+    # R36: Potencia de carga en depositos donde el bus no esta idling debe ser 0
     for k in K:
         for m in M[k]:
             allowed = set(PHI_depo.get((k, m), []))
@@ -217,14 +185,14 @@ def build_model(data, sense=GRB.MINIMIZE):
                         model.addConstr(p_depot[d, k, m, phi] == 0.0,
                                         name=f"p_depot_not_idle[{d},{k},{m},{phi}]")
 
-    # R37: depot charger capacity per depot (aggregated across lines it serves)
+    # R37: Consumo de potencia maxima en depositos
     model.addConstrs(
         (quicksum(p_depot[d, k, m, phi] for k in K for m in M[k] if d in d_k[k]) <= p_depot_cap[d]
          for d in D for phi in PHI),
         name="p_depot_limit"
     )
 
-    # R39: average terminal power per demand period (η_{i,ζ})
+    # R39: Potencia promedio por terminal en periodo de demanda z
     model.addConstrs(
         (eta_term[i, z] ==
          (1.0 / gamma) *
@@ -233,7 +201,7 @@ def build_model(data, sense=GRB.MINIMIZE):
         name="average_eta_term"
     )
 
-    # R40: average depot power per demand period (η_{d,ζ})
+    # R40: Potencia promedio por deposito en periodo de demanda z
     model.addConstrs(
         (eta_depo[d, z] ==
          (1.0 / gamma) *
@@ -242,8 +210,8 @@ def build_model(data, sense=GRB.MINIMIZE):
         name="average_eta_depo"
     )
 
-    # Battery energy lower/upper bounds: R8–R11
-    # Lower bounds
+    # R8-11: Cotas inferiores y superiored de las baterias 
+    # Cota inferior
     model.addConstrs((e_depo_arr[d, k, m] >= soc_low * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="lb_depo_arr")
     model.addConstrs((e_depo_dep[d, k, m] >= soc_low * u_k[k]
@@ -253,7 +221,7 @@ def build_model(data, sense=GRB.MINIMIZE):
     model.addConstrs((e_term_dep[i, k, m, l] >= soc_low * u_k[k]
                       for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]), name="lb_term_dep")
 
-    # Upper bounds
+    # Cota superior
     model.addConstrs((e_depo_arr[d, k, m] <= soc_up * u_k[k]
                       for k in K for d in d_k[k] for m in M[k]), name="ub_depo_arr")
     model.addConstrs((e_depo_dep[d, k, m] <= soc_up * u_k[k]
@@ -263,16 +231,16 @@ def build_model(data, sense=GRB.MINIMIZE):
     model.addConstrs((e_term_dep[i, k, m, l] <= soc_up * u_k[k]
                       for k in K for m in M[k] for l in L_km[(m,k)] for i in N_k[k]), name="ub_term_dep")
 
-    # Peak linearization (use >=, not ==): R41–R44
+    #  R45-48: Demanda peak 
     model.addConstrs((sigma_term_on[i]  >= eta_term[i, z] for i in N for z in Z if z in Z_peak),  name="sigma_term_on")
     model.addConstrs((sigma_term_off[i] >= eta_term[i, z] for i in N for z in Z if z not in Z_peak), name="sigma_term_off")
     model.addConstrs((sigma_depo_on[d]  >= eta_depo[d, z] for d in D for z in Z if z in Z_peak),  name="sigma_depo_on")
     model.addConstrs((sigma_depo_off[d] >= eta_depo[d, z] for d in D for z in Z if z not in Z_peak), name="sigma_depo_off")
 
-    # ---------------------
     # OBJECTIVE
-    # ---------------------
-    # Energy charge (sum by on/off hours)
+    print("Creando funcion objetivo...")
+    # Cargos por energia
+    # En horas peak
     EC_on = quicksum(
         psi_on * (
             quicksum(p_term[i, k, m, phi] * rho for phi in PHI_h[h] for i in N_k[k]) +
@@ -280,6 +248,7 @@ def build_model(data, sense=GRB.MINIMIZE):
         )
         for k in K for m in M[k] for h in H if h in H_peak
     )
+    # Fuera de horas peak
     EC_off = quicksum(
         psi_off * (
             quicksum(p_term[i, k, m, phi] * rho for phi in PHI_h[h] for i in N_k[k]) +
@@ -289,70 +258,85 @@ def build_model(data, sense=GRB.MINIMIZE):
     )
     EC = EC_on + EC_off
 
-    # Demand charge
+    # Cargos por demanda
     DC = pi_on  * (quicksum(sigma_term_on[i]  for i in N) + quicksum(sigma_depo_on[d]  for d in D)) \
        + pi_off * (quicksum(sigma_term_off[i] for i in N) + quicksum(sigma_depo_off[d] for d in D))
 
     model.setObjective(EC + omega * DC, GRB.MINIMIZE)
-
+    print("Modelo listo!")
     return model
 
 
-# -------------------------
-# Minimal stub matching YOUR keys
-# -------------------------
+
 if __name__ == "__main__":
-    # One depot, one line, one bus, two terminals, two loops (toy)
+    # Datos minimos para testear el modelo
+
     N = ["A", "B", "C"]
     D     = ["D1"]
-    K     = ["L1"]
+    K     = ["L1", "L2"]
 
-    N_k   = {"L1": ["A", "B", "C"]}
-    A_k   = {"L1": [("A","B"), ("B", "C"), ("C", "B"), ("B","A")]}
-    M     = {"L1": ["B1", "B2"]}
-    L_km  = {("B1","L1"): [1, 2], ("B2","L1"): [1, 2]}           # <-- note (m,k) key
+    N_k   = {
+        "L1": ["A", "B", "C"], 
+        "L2": ["B", "D"]
+        }
+    A_k   = {
+        "L1": [("A","B"), ("B", "C"), ("C", "B"), ("B","A")],
+        "L2": [("B","D"), ("D","B")]
+        }
+    M     = {
+        "L1": ["B1", "B2"],
+        "L2": ["B3"]
+        }
+    L_km  = {
+        ("B1","L1"): [1, 2],
+        ("B2","L1"): [1, 2],
+        ("B3","L2"): [1, 2]
+        }
 
     # Start terminal and depot mapping
-    o_k   = {"L1": "A"}                     # scalar; model handles list too
-    d_k   = {"L1": ["D1"]}                  # list to allow multi-depot lines
+    o_k   = {
+        "L1": "A",
+        "L2": "B"
+        }                     # scalar; model handles list too
+    d_k   = {
+        "L1": ["D1"],
+        "L2": ["D1"]
+        }                  # list to allow multi-depot lines
 
-    # Time partitions
-    # -------------------------
-    # 24h time sets (configurable resolution)
-    # -------------------------
+    # Parametros de tiempo
     HOURS = 8
-    RES_MIN = 60          # change to 15, 5, or 1 for finer grids
-    H = list(range(HOURS))   # hours 0..23
+    RES_MIN = 15          # Resolucion en minutos
+    H = list(range(HOURS))   
     SLOTS_PER_HOUR = 60 // RES_MIN
     T = HOURS * SLOTS_PER_HOUR
 
-    # Discrete time points Φ = {1..T} (1-based labels)
+    # Periodos de tiempo
     PHI = list(range(1, T + 1))
 
-    # Map each hour h to its Φ-indices inside that hour
-    # hour 0 gets indices 1..SLOTS_PER_HOUR, hour 1 gets next block, etc.
+    # Periodos de tiempo pro hora
     PHI_h = {
         h: list(range(h * SLOTS_PER_HOUR + 1, (h + 1) * SLOTS_PER_HOUR + 1))
         for h in H
     }
 
-    # Demand periods Z: use hours as demand periods (paper-compatible)
-    Z = H[:]                       # Z = {0..23}
+    # Periodos de demanda (se ocupan las horas)
+    Z = H[:]
     PHI_z = {z: PHI_h[z] for z in Z}
 
-    # Pick on-peak hour set (example: 16:00–21:00)
+    # Horas peak
     ON_PEAK_HOURS = {4}
     H_peak = list(ON_PEAK_HOURS)
-    Z_peak = list(ON_PEAK_HOURS)   # same periods as hours in this setup
+    Z_peak = list(ON_PEAK_HOURS)   
 
-    # Time-step weight ρ and averaging divisor γ for Eq. (39)–(40)
-    # In your model you use (1/γ) * Σ (p * ρ). With hourly slots, ρ=1 and γ=SLOTS_PER_HOUR=1.
-    rho = 1.0
+    # Peso del paso de tiempo y divisor para el promedio de potencia
+    rho = 1.0 / SLOTS_PER_HOUR
     gamma = SLOTS_PER_HOUR
 
     # Tener mucho cuidado con las ventanas de idling
     # Si el gasto de energia entre nodos es muy alto (inluso de 10 kWh)
     # Este se tiene que cargar en cada nodo en todas las ventanas posibles
+
+    # Ventanas de idling en terminales
     PHI_term = {
     ("A", "L1", "B1", 1): PHI_h[1],
     ("B", "L1", "B1", 1): PHI_h[2],
@@ -366,57 +350,79 @@ if __name__ == "__main__":
     ("A", "L1", "B2", 2): PHI_h[4],
     ("B", "L1", "B2", 2): PHI_h[5],
     ("C", "L1", "B2", 2): PHI_h[6],
-    # add more windows as needed...
+    ("B", "L2", "B3", 1): PHI_h[2],
+    ("D", "L2", "B3", 1): PHI_h[3],
+    ("B", "L2", "B3", 2): PHI_h[5],
+    ("D", "L2", "B3", 2): PHI_h[6]
     }
 
-    # Example depot idling: same bus idles at the depot in hours 0 and 23
+    # Ventanas de idling en depositos
     PHI_depo = {
         ("L1", "B1"): PHI_h[0] + PHI_h[7],
-        ("L1", "B2"): PHI_h[0] + PHI_h[7]
+        ("L1", "B2"): PHI_h[0] + PHI_h[7],
+        ("L2", "B3"): PHI_h[0] + PHI_h[7],
     }
 
-    # Params
-    rho = 1.0
-    u_k = {"L1": 500.0}
+    # Parametros de las baterias
+    u_k = {
+        "L1": 500.0,
+        "L2": 600.0
+        }
     soc_low, soc_up = 0.2, 0.9
 
-    # Energy consumptions (kWh)
-    c_depo_to_term = {
+    # Consumo de energia (kWh)
+
+    # Cosnumo del deposito al terminal y viceversa
+    c_depo_to_term = { 
         ("D1","A","L1","B1"): 5.0,
         ("D1","A","L1","B2"): 5.0,
+        ("D1","B","L2","B3"): 7.0
         }
     c_term_to_depo = {
         ("A","D1","L1","B1"): 5.0,
-        ("A","D1","L1","B2"): 5.0
+        ("A","D1","L1","B2"): 5.0,
+        ("B","D1","L2","B3"): 7.0
         }
+    
+    # Consumo en cada arco
     c_arc = {
         ("A","B","L1","B1",1): 10.0,
-        ("B","C","L1","B1",1): 10.0,
-        ("C","B","L1","B1",1): 10.0,
+        ("B","C","L1","B1",1): 15.0,
+        ("C","B","L1","B1",1): 15.0,
         ("B","A","L1","B1",1): 10.0,
         ("A","B","L1","B1",2): 10.0,
-        ("B","C","L1","B1",2): 10.0,
-        ("C","B","L1","B1",2): 10.0,
+        ("B","C","L1","B1",2): 15.0,
+        ("C","B","L1","B1",2): 15.0,
         ("B","A","L1","B1",2): 10.0,
         ("A","B","L1","B2",1): 10.0,
-        ("B","C","L1","B2",1): 10.0,
-        ("C","B","L1","B2",1): 10.0,
+        ("B","C","L1","B2",1): 15.0,
+        ("C","B","L1","B2",1): 15.0,
         ("B","A","L1","B2",1): 10.0,
         ("A","B","L1","B2",2): 10.0,
-        ("B","C","L1","B2",2): 10.0,
-        ("C","B","L1","B2",2): 10.0,
+        ("B","C","L1","B2",2): 15.0,
+        ("C","B","L1","B2",2): 15.0,
         ("B","A","L1","B2",2): 10.0,
+        ("B","D","L2","B3",1): 20.0,
+        ("D","B","L2","B3",1): 20.0,
+        ("B","D","L2","B3",2): 20.0,
+        ("D","B","L2","B3",2): 20.0
         }
 
-    # Charger caps (kW)
-    p_on_route  = {("A","L1"): 500.0, ("B","L1"): 500.0, ("C","L1"): 500.0}
+    # Capacidad de los cargadores
+    p_on_route  = {("A","L1"): 500.0,
+                   ("B","L1"): 500.0,
+                   ("C","L1"): 500.0, 
+                   ("B","L2"): 500.0, 
+                   ("D","L2"): 500.0
+                   }
+    
     p_depo_cap  = {"D1": 1500.0}
 
-    # Efficiencies
-    theta_on_route = 0.99
-    theta_depo     = 0.99
+    # Eficiencia de los cargadores
+    theta_on_route = 0.9
+    theta_depo     = 0.9
 
-    # Prices
+    # Precios
     psi_on, psi_off = 0.050209, 0.033889   # $/kWh
     pi_on,  pi_off  = 15.40, 0.0           # $/kW
     omega = 1.0/30.0
@@ -429,16 +435,16 @@ if __name__ == "__main__":
         c_depo_to_term=c_depo_to_term, c_term_to_depo=c_term_to_depo, c_arc=c_arc,
         p_on_route=p_on_route, p_depo=p_depo_cap,
         theta_on_route=theta_on_route, theta_depo=theta_depo,
-        gamma=len(PHI_z[1]),  # example: divisor equals |Φ_z|
+        gamma=len(PHI_z[1]), 
         psi_on=psi_on, psi_off=psi_off, pi_on=pi_on, pi_off=pi_off, omega=omega
     )
 
     model = build_model(data)
     model.Params.OutputFlag = 1
     model.optimize()
-
+    print("Resolviendo modelo...")
     if model.status == GRB.OPTIMAL:
-        print(f"Optimal objective = {model.objVal:.6f}")
+        print(f"Valor objetivo = {model.objVal:.6f}")
         with open("constraints.txt", "w") as f:
             f.write("Constraint,Slack\n")
             for constr in model.getConstrs():
@@ -446,9 +452,8 @@ if __name__ == "__main__":
         model.write("solucion.sol")
 
     elif model.status == GRB.INFEASIBLE:
-        print("Model is infeasible.")
-        model.computeIIS()  # Compute irreducible infeasible set
-        model.write("model.ilp")  # Save the infeasibility set for review
-        print("Infeasible constraints saved to model.ilp")
+        print("Modelo infactible")
+        model.computeIIS()
+        model.write("model.ilp")
     else:
-        print("Model optimization failed with status:", model.status)
+        print("Modelo fallo con estado:", model.status)
