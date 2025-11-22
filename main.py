@@ -1,5 +1,6 @@
 from gurobipy import Model, GRB, quicksum
 from datetime import datetime
+import os
 def build_model(data):
 
     print("Cargando datos...")
@@ -37,7 +38,7 @@ def build_model(data):
     c_arc = data['c_arc'] # Consumo de energia en cada arco (kWh)
 
     p_on_route   = data['p_on_route'] # Capacidad de los cargadores en ruta (kWh)
-    p_depot_cap  = data['p_depo'] # Capacidad de los cargadores en el deposito (kWh)
+    p_depo_cap  = data['p_depo'] # Capacidad de los cargadores en el deposito (kWh)
 
     theta_on_route = data['theta_on_route'] # Eficiencia de los cargadores en ruta
     theta_depo     = data['theta_depo'] # Eficiencia de los cargadores en el deposito
@@ -187,7 +188,7 @@ def build_model(data):
 
     # R37: Consumo de potencia maxima en depositos
     model.addConstrs(
-        (quicksum(p_depot[d, k, m, phi] for k in K for m in M[k] if d in d_k[k]) <= p_depot_cap[d]
+        (quicksum(p_depot[d, k, m, phi] for k in K for m in M[k] if d in d_k[k]) <= p_depo_cap[d]
          for d in D for phi in PHI),
         name="p_depot_limit"
     )
@@ -273,31 +274,32 @@ def load_data():
     """ Se carga una instancia de datos de prueba
         para resolver el problema y verificar su funcionamiento
     """
-    N = ["A", "B", "C"]
+    N = ["A", "B", "C", "D"]
     D     = ["D1"]
     K     = ["L1", "L2"]
 
     N_k   = {
-        "L1": ["A", "B", "C"], 
-        "L2": ["B", "D"]
+        "L1": ["A", "B"], 
+        "L2": ["C", "D"]
         }
     A_k   = {
-        "L1": [("A","B"), ("B", "C"), ("C", "B"), ("B","A")],
-        "L2": [("B","D"), ("D","B")]
+        "L1": [("A","B"), ("B","A")],
+        "L2": [("C","D"), ("D","C")]
         }
     M     = {
         "L1": ["B1", "B2"],
-        "L2": ["B3"]
+        "L2": ["B3", "B4"]
         }
     L_mk  = {
         ("B1","L1"): [1, 2],
         ("B2","L1"): [1, 2],
-        ("B3","L2"): [1, 2]
+        ("B3","L2"): [1, 2],
+        ("B4","L2"): [1, 2]
         }
 
     o_k   = {
         "L1": "A",
-        "L2": "B"
+        "L2": "C"
         }      
     d_k   = {
         "L1": ["D1"],
@@ -339,11 +341,12 @@ def load_data():
 
     # Ventanas de idling en terminales
     PHI_term = {
-    ("C", "L1", "B1", 1): PHI_h[3],
-    ("C", "L1", "B1", 2): PHI_h[6],
-    ("C", "L1", "B2", 1): PHI_h[3],
-    ("C", "L1", "B2", 2): PHI_h[6],
-    ("D", "L2", "B3", 2): PHI_h[6]
+    ("B", "L1", "B1", 1): PHI_h[3],
+    ("B", "L1", "B1", 2): PHI_h[6],
+    ("B", "L1", "B2", 1): PHI_h[3],
+    ("B", "L1", "B2", 2): PHI_h[6],
+    ("D", "L2", "B3", 2): PHI_h[6],
+    ("D", "L2", "B4", 2): PHI_h[6]
     }
 
     # Ventanas de idling en depositos
@@ -351,6 +354,7 @@ def load_data():
         ("L1", "B1"): PHI_h[7],
         ("L1", "B2"): PHI_h[7],
         ("L2", "B3"): PHI_h[7],
+        ("L2", "B4"): PHI_h[7],
     }
 
     # Parametros de las baterias
@@ -362,47 +366,45 @@ def load_data():
 
     # Consumo de energia (kWh)
 
-    # Cosnumo del deposito al terminal y viceversa
+    # Consumo del deposito al terminal y viceversa
     c_depo_to_term = { 
         ("D1","A","L1","B1"): 5.0,
         ("D1","A","L1","B2"): 5.0,
-        ("D1","B","L2","B3"): 7.0
+        ("D1","C","L2","B3"): 7.0,
+        ("D1","C","L2","B4"): 7.0
         }
     c_term_to_depo = {
         ("A","D1","L1","B1"): 5.0,
         ("A","D1","L1","B2"): 5.0,
-        ("B","D1","L2","B3"): 7.0
+        ("C","D1","L2","B3"): 7.0,
+        ("C","D1","L2","B4"): 7.0,
+
         }
     
     # Consumo en cada arco
     c_arc = {
-        ("A","B","L1","B1",1): 10.0,
-        ("B","C","L1","B1",1): 15.0,
-        ("C","B","L1","B1",1): 15.0,
-        ("B","A","L1","B1",1): 10.0,
-        ("A","B","L1","B1",2): 10.0,
-        ("B","C","L1","B1",2): 15.0,
-        ("C","B","L1","B1",2): 15.0,
-        ("B","A","L1","B1",2): 10.0,
-        ("A","B","L1","B2",1): 10.0,
-        ("B","C","L1","B2",1): 15.0,
-        ("C","B","L1","B2",1): 15.0,
-        ("B","A","L1","B2",1): 10.0,
-        ("A","B","L1","B2",2): 10.0,
-        ("B","C","L1","B2",2): 15.0,
-        ("C","B","L1","B2",2): 15.0,
-        ("B","A","L1","B2",2): 10.0,
-        ("B","D","L2","B3",1): 20.0,
-        ("D","B","L2","B3",1): 20.0,
-        ("B","D","L2","B3",2): 20.0,
-        ("D","B","L2","B3",2): 20.0
+        ("A","B","L1","B1",1): 150.0,
+        ("B","A","L1","B1",1): 150.0,
+        ("A","B","L1","B1",2): 150.0,
+        ("B","A","L1","B1",2): 150.0,
+        ("A","B","L1","B2",1): 150.0,
+        ("B","A","L1","B2",1): 150.0,
+        ("A","B","L1","B2",2): 150.0,
+        ("B","A","L1","B2",2): 150.0,
+        ("C","D","L2","B3",1): 20.0,
+        ("D","C","L2","B3",1): 20.0,
+        ("C","D","L2","B3",2): 20.0,
+        ("D","C","L2","B3",2): 20.0,
+        ("C","D","L2","B4",1): 20.0,
+        ("D","C","L2","B4",1): 20.0,
+        ("C","D","L2","B4",2): 20.0,
+        ("D","C","L2","B4",2): 20.0
         }
 
     # Capacidad de los cargadores
     p_on_route  = {("A","L1"): 500.0,
                    ("B","L1"): 500.0,
-                   ("C","L1"): 500.0, 
-                   ("B","L2"): 500.0, 
+                   ("C","L2"): 500.0, 
                    ("D","L2"): 500.0
                    }
     
@@ -439,18 +441,25 @@ if __name__ == "__main__":
     print("Resolviendo modelo...")
 
     exec_time = datetime.now().strftime("%m-%d_%H-%M")
+    logs_base = "logs"
+    paths = [os.path.join(logs_base, "constraints"), os.path.join(logs_base, "sols"), os.path.join(logs_base, "ilps")]
+    for p in paths:
+        os.makedirs(p, exist_ok=True)
+
     if model.status == GRB.OPTIMAL:
         print(f"Valor objetivo = {model.objVal:.6f}")
 
-        with open(f"logs/constraints/constraints_{exec_time}.csv", "w") as f:
+        constraints_file = os.path.join(logs_base, "constraints", f"constraints_{exec_time}.csv")
+        with open(constraints_file, "w") as f:
             f.write("Constraint,Slack\n")
             for constr in model.getConstrs():
                 f.write(f"{constr.ConstrName},{constr.Slack}\n")
-        model.write(f"logs/sols/solucion_{exec_time}.sol")
+
+        model.write(os.path.join(logs_base, "sols", f"solucion_{exec_time}.sol"))
 
     elif model.status == GRB.INFEASIBLE:
         print("Modelo infactible")
         model.computeIIS()
-        model.write(f"logs/ilps/model_{exec_time}.ilp")
+        model.write(os.path.join(logs_base, "ilps", f"model_{exec_time}.ilp"))
     else:
         print("Modelo fallo con estado:", model.status)
