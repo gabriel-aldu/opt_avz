@@ -1,7 +1,7 @@
 import numpy as np
 import random
 
-def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio = 6):
+def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio = 5):
     """Genera una instancia SIMPLE con escenarios estocásticos"""
     
     # Configuracion Básica (1 Linea, 2 Buses, 1 Deposito, 2 Terminales)
@@ -19,7 +19,7 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     
     # Tiempo
     HOURS = 24
-    RES_MIN = 60 # Bloques de 1 hora para que sea rapido
+    RES_MIN = 1 # Bloques de 1 hora para que sea rapido
     SLOTS_PER_HOUR = 60 // RES_MIN
     T = HOURS * SLOTS_PER_HOUR
     PHI = list(range(1, T + 1))
@@ -48,13 +48,13 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     }
     
     # Parametros Deterministas
-    u_k = {K[i]: 300.0 for i in range(num_lineas)} # Bateria chica para forzar carga
+    u_k = {K[i]: 350.0 for i in range(num_lineas)} # Bateria chica para forzar carga
     epsilon_up, epsilon_low = 0.95, 0.15
-    p_on_route = {(N_k[k][i], k): 300.0 for i in range(2) for k in K} # Capacidad de carga en ruta
-    p_depo = {D[i]: 500.0 for i in range(len(D))} # Capacidad de carga en deposito
+    p_on_route = {(N_k[k][i], k): 150.0 for i in range(2) for k in K} # Capacidad de carga en ruta
+    p_depo = {D[i]: 50.0 for i in range(len(D))} # Capacidad de carga en deposito
     theta_on_route, theta_depo = 0.95, 0.95
-    psi_on, psi_off = 100.0, 50.0  # Precios Energia
-    pi_on, pi_off = 2000.0, 500.0  # Precios Demanda
+    psi_on, psi_off = 120.0, 60.0  # Precios Energia
+    pi_on, pi_off = 3000.0, 1000.0  # Precios Demanda
     omega = 1.0/30.0
 
     # --- GENERACIÓN ESTOCÁSTICA ---
@@ -63,8 +63,8 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     PROBS = {s: 1.0/NUM_SCENARIOS for s in SCENARIOS} # Equiprobables
     
     # Consumo Base
-    base_c_arc = 60.0 # kWh por tramo
-    base_c_depo = 10.0
+    base_c_arc = 38.0 # kWh por tramo
+    base_c_depo = 5.0
     
     # Diccionarios estocásticos
     c_depo_to_term_scen = {}
@@ -74,8 +74,8 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     for s in SCENARIOS:
         # Factor de variabilidad (Normal centrada en 1.0, desv std 0.2)
         # Algunos escenarios consumiran 20% más, otros menos.
-        factor = np.random.normal(1.0, 0.2) 
-        factor = max(0.5, factor) # Evitar negativos
+        factor = np.random.normal(1.0, 0.15) 
+        factor = max(1.3, factor) # Evitar negativos
         
         # Llenar diccionarios
         # Deposito -> Terminal
@@ -112,4 +112,5 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
 
 data = generate_data()
 
-print(data["o_k"])
+for key, value in data["PHI_term"].items():
+    print(f"{key}: {value}\n")

@@ -3,7 +3,8 @@ from gurobipy import Model, GRB, quicksum
 from datetime import datetime
 import os
 from generate_data import generate_data
-
+import time
+from pepa_data import generate_data_224
 # Semilla para reproducibilidad
 np.random.seed(42)
 
@@ -405,7 +406,9 @@ def generate_simple_stochastic_data():
     return data
 
 if __name__ == "__main__":
-    data = generate_data()
+    ini_time = time.time()
+    data = generate_data(num_lineas = 1, num_buses = 4, num_vueltas = 12, hora_inicio = 5)
+    # data = generate_data_224()
     for key, value in data.items():
         print(f"{key}: {value}")
     model = build_stochastic_model(data)
@@ -432,3 +435,6 @@ if __name__ == "__main__":
             print("El sistema es robusto: Ningún escenario violó los límites de batería.")
     else:
         print("No se encontró solución óptima.")
+    
+    fin_time = time.time()
+    print(f"\nTiempo total de ejecución: {fin_time - ini_time:.2f} segundos.")
