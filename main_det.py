@@ -1,6 +1,10 @@
 from gurobipy import Model, GRB, quicksum
 from datetime import datetime
 import os
+from generate_data import generate_data
+import json
+from main_estoca import export_parameters
+
 def build_model(data):
 
     print("Cargando datos...")
@@ -60,11 +64,11 @@ def build_model(data):
     print("Creando variables...")
     # Energia en los depositos (kWh)
     e_depo_arr = model.addVars(
-        [(d,k,m) for k in K for d in d_k[k] for m in M[k]],
+        [(d_k[k],k,m) for k in K for m in M[k]],
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_depo_arr"
     )
     e_depo_dep = model.addVars(
-        [(d,k,m) for k in K for d in d_k[k] for m in M[k]],
+        [(d_k[k],k,m) for k in K for m in M[k]],
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_depo_dep"
     )
 
@@ -84,7 +88,7 @@ def build_model(data):
         lb=0.0, vtype=GRB.CONTINUOUS, name="p_term"
     )
     p_depot = model.addVars(
-        [(d,k,m,phi) for k in K for d in d_k[k] for m in M[k] for phi in PHI],
+        [(d_k[k],k,m,phi) for k in K for m in M[k] for phi in PHI],
         lb=0.0, vtype=GRB.CONTINUOUS, name="p_depot"
     )
 
@@ -102,15 +106,15 @@ def build_model(data):
     print("Creando restricciones...")
     # R1: Energia inicial en el deposito
     model.addConstrs(
-        (e_depo_dep[d,k,m] == epsilon_up * u_k[k] for k in K for d in d_k[k] for m in M[k]),
+        (e_depo_dep[d_k[k],k,m] == epsilon_up * u_k[k] for k in K for m in M[k]),
         name="initial_soc_depo"
     )
 
     # R2: Consumo del deposito al terminal (primer viaje, l=1)
     model.addConstrs(
-        (e_term_dep[o, k, m, min(L_mk[(m,k)])] ==
-         e_depo_dep[d, k, m] - c_depo_to_term[(d, o, k, m)]
-         for k in K for m in M[k] for d in d_k[k] for o in o_k[k]),
+        (e_term_dep[o_k[k], k, m, min(L_mk[(m,k)])] ==
+         e_depo_dep[d_k[k], k, m] - c_depo_to_term[(d_k[k], o_k[k], k, m)]
+         for k in K for m in M[k]),
         name="soc_depo_to_term"
     )
 
@@ -124,9 +128,9 @@ def build_model(data):
 
     # R6: Consumo del terminal al deposito (ultimo viaje, l=max)
     model.addConstrs(
-        (e_depo_arr[d, k, m] ==
-         e_term_dep[o, k, m, max(L_mk[(m,k)])] - c_term_to_depo[(o, d, k, m)]
-         for k in K for m in M[k] for d in d_k[k] for o in o_k[k]),
+        (e_depo_arr[d_k[k], k, m] ==
+         e_term_dep[o_k[k], k, m, max(L_mk[(m,k)])] - c_term_to_depo[(o_k[k], d_k[k], k, m)]
+         for k in K for m in M[k]),
         name="soc_term_to_depo"
     )
 
@@ -141,20 +145,20 @@ def build_model(data):
 
     # R29: Energia cargada en el terminal inicial
     model.addConstrs(
-        (e_term_dep[o, k, m, l] ==
-         e_term_arr[o, k, m, l-1] +
-         theta_on_route * quicksum(p_term[o, k, m, phi] * rho
-                                   for phi in PHI_term.get((o, k, m, l), []))
-         for k in K for m in M[k] for l in L_mk[(m,k)] if l >= 2 for o in o_k[k]),
+        (e_term_dep[o_k[k], k, m, l] ==
+         e_term_arr[o_k[k], k, m, l-1] +
+         theta_on_route * quicksum(p_term[o_k[k], k, m, phi] * rho
+                                   for phi in PHI_term.get((o_k[k], k, m, l), []))
+         for k in K for m in M[k] for l in L_mk[(m,k)] if l >= 2),
         name="soc_o_term"
     )
 
     # R30: Energia carga en el deposito
     model.addConstrs(
-        (e_depo_dep[d, k, m] ==
-         e_depo_arr[d, k, m] +
-         theta_depo * quicksum(p_depot[d, k, m, phi] * rho for phi in PHI_depo.get((k, m), []))
-         for k in K for m in M[k] for d in d_k[k]),
+        (e_depo_dep[d_k[k], k, m] ==
+         e_depo_arr[d_k[k], k, m] +
+         theta_depo * quicksum(p_depot[d_k[k], k, m, phi] * rho for phi in PHI_depo.get((k, m), []))
+         for k in K for m in M[k]),
         name="soc_depo"
     )
 
@@ -180,11 +184,10 @@ def build_model(data):
     for k in K:
         for m in M[k]:
             allowed = set(PHI_depo.get((k, m), []))
-            for d in d_k[k]:
-                for phi in PHI:
-                    if phi not in allowed:
-                        model.addConstr(p_depot[d, k, m, phi] == 0.0,
-                                        name=f"p_depot_not_idle[{d},{k},{m},{phi}]")
+            for phi in PHI:
+                if phi not in allowed:
+                    model.addConstr(p_depot[d_k[k], k, m, phi] == 0.0,
+                                    name=f"p_depot_not_idle[{d_k[k]},{k},{m},{phi}]")
 
     # R37: Consumo de potencia maxima en depositos
     model.addConstrs(
@@ -206,27 +209,27 @@ def build_model(data):
     model.addConstrs(
         (eta_depo[d, z] ==
          (1.0 / gamma) *
-         quicksum(p_depot[d, k, m, phi] * rho for phi in PHI_z[z] for k in K for m in M[k] if d in d_k[k])
+         quicksum(p_depot[d_k[k], k, m, phi] * rho for phi in PHI_z[z] for k in K for m in M[k])
          for d in D for z in Z),
         name="average_eta_depo"
     )
 
     # R8-11: Cotas inferiores y superiored de las baterias 
     # Cota inferior
-    model.addConstrs((e_depo_arr[d, k, m] >= epsilon_low * u_k[k]
-                      for k in K for d in d_k[k] for m in M[k]), name="lb_depo_arr")
-    model.addConstrs((e_depo_dep[d, k, m] >= epsilon_low * u_k[k]
-                      for k in K for d in d_k[k] for m in M[k]), name="lb_depo_dep")
+    model.addConstrs((e_depo_arr[d_k[k], k, m] >= epsilon_low * u_k[k]
+                      for k in K for m in M[k]), name="lb_depo_arr")
+    model.addConstrs((e_depo_dep[d_k[k], k, m] >= epsilon_low * u_k[k]
+                      for k in K for m in M[k]), name="lb_depo_dep")
     model.addConstrs((e_term_arr[i, k, m, l] >= epsilon_low * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="lb_term_arr")
     model.addConstrs((e_term_dep[i, k, m, l] >= epsilon_low * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="lb_term_dep")
 
     # Cota superior
-    model.addConstrs((e_depo_arr[d, k, m] <= epsilon_up * u_k[k]
-                      for k in K for d in d_k[k] for m in M[k]), name="ub_depo_arr")
-    model.addConstrs((e_depo_dep[d, k, m] <= epsilon_up * u_k[k]
-                      for k in K for d in d_k[k] for m in M[k]), name="ub_depo_dep")
+    model.addConstrs((e_depo_arr[d_k[k], k, m] <= epsilon_up * u_k[k]
+                      for k in K for m in M[k]), name="ub_depo_arr")
+    model.addConstrs((e_depo_dep[d_k[k], k, m] <= epsilon_up * u_k[k]
+                      for k in K for m in M[k]), name="ub_depo_dep")
     model.addConstrs((e_term_arr[i, k, m, l] <= epsilon_up * u_k[k]
                       for k in K for m in M[k] for l in L_mk[(m,k)] for i in N_k[k]), name="ub_term_arr")
     model.addConstrs((e_term_dep[i, k, m, l] <= epsilon_up * u_k[k]
@@ -245,7 +248,7 @@ def build_model(data):
     EC_on =  quicksum(
         psi_on * (
             quicksum(p_term[i, k, m, phi] * rho for phi in PHI_h[h] for i in N_k[k]) +
-            quicksum(p_depot[d, k, m, phi] * rho for phi in PHI_h[h] for d in d_k[k])
+            quicksum(p_depot[d_k[k], k, m, phi] * rho for phi in PHI_h[h])
         )
         for k in K for m in M[k] for h in H if h in H_peak
     )
@@ -253,7 +256,7 @@ def build_model(data):
     EC_off = quicksum(
         psi_off * (
             quicksum(p_term[i, k, m, phi] * rho for phi in PHI_h[h] for i in N_k[k]) +
-            quicksum(p_depot[d, k, m, phi] * rho for phi in PHI_h[h] for d in d_k[k])
+            quicksum(p_depot[d_k[k], k, m, phi] * rho for phi in PHI_h[h])
         )
         for k in K for m in M[k] for h in H if h not in H_peak
     )
@@ -432,15 +435,17 @@ def load_data():
     )
     return data
 
+
 if __name__ == "__main__":
 
-    data = load_data()
+    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 4, hora_inicio = 5, stochastic=False)
     model = build_model(data)
     model.Params.OutputFlag = 1
     model.optimize()
     print("Resolviendo modelo...")
 
-    exec_time = datetime.now().strftime("%m-%d_%H-%M")
+    exec_time = datetime.now().strftime("%m-%d_%H-%M-%S")
+    export_parameters(data, f"parameters/params_det_{exec_time}.json")
     logs_base = "logs"
     paths = [os.path.join(logs_base, "constraints"), os.path.join(logs_base, "sols"), os.path.join(logs_base, "ilps")]
     for p in paths:
@@ -455,7 +460,7 @@ if __name__ == "__main__":
             for constr in model.getConstrs():
                 f.write(f"{constr.ConstrName},{constr.Slack}\n")
 
-        model.write(os.path.join(logs_base, "sols", f"solucion_{exec_time}.sol"))
+        model.write(os.path.join(logs_base, "sols", f"solucion_det_{exec_time}.sol"))
 
     elif model.status == GRB.INFEASIBLE:
         print("Modelo infactible")

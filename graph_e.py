@@ -2,7 +2,7 @@ from sol_parser import sol_parser
 
 import matplotlib.pyplot as plt
 
-def plot_e(sol_data):
+def plot_stochastic_e(sol_data):
 
     e_depo_arr_data = {key: sol_data['e_depo_arr'][key] for key in sol_data['e_depo_arr']}
     e_depo_dep_data = {key: sol_data['e_depo_dep'][key] for key in sol_data['e_depo_dep']}
@@ -44,6 +44,46 @@ def plot_e(sol_data):
             plt.tight_layout()
             plt.show()
 
+def plot_det_e(sol_data):
+
+    e_depo_arr_data = {key: sol_data['e_depo_arr'][key] for key in sol_data['e_depo_arr']}
+    e_depo_dep_data = {key: sol_data['e_depo_dep'][key] for key in sol_data['e_depo_dep']}
+    e_term_arr_data = {key: sol_data['e_term_arr'][key] for key in sol_data['e_term_arr']}
+    e_term_dep_data = {key: sol_data['e_term_dep'][key] for key in sol_data['e_term_dep']}
+
+    buses = set([key[2] for key in e_depo_dep_data.keys()])
+
+    for bus in buses:
+        x_values = []
+        y_values = []
+        for key in e_depo_dep_data.keys():
+            if key[2] == bus:
+                depot_value = e_depo_dep_data[key]
+                x_values.append(f'e_depo_dep_{key[2]}')
+                y_values.append(depot_value)
+                for term in ['L1-A', 'L1-B']:
+                    for loop in range(0, 4):
+                        arr_key = (term, key[1], key[2], str(loop))
+                        dep_key = (term, key[1], key[2], str(loop))
+
+                        x_values.append(f'e_term_arr_{arr_key[0]}_loop_{loop}')
+                        y_values.append(e_term_arr_data[arr_key])
+                        x_values.append(f'e_term_dep_{dep_key[0]}_loop_{loop}')
+                        y_values.append(e_term_dep_data[dep_key])
+
+                depo_arr_value = e_depo_arr_data[key]
+                x_values.append(f'e_depo_arr_{key[2]}')
+                y_values.append(depo_arr_value)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(x_values, y_values, marker='o', color='b', label="Energy")
+        plt.xlabel("Etapa del día")
+        plt.ylabel("Energía")
+        plt.title(f"Energía para el Bus {bus}")
+        plt.xticks(rotation=90)
+        plt.tight_layout()
+        plt.show()
+
 if __name__ == "__main__":
-    sol_data = sol_parser('logs/sols/solucion_estoca_11-25_15-31.sol')
-    plot_e(sol_data)
+    sol_data = sol_parser('logs/sols/solucion_det_11-25_20-04-56.sol')
+    plot_det_e(sol_data)

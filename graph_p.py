@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from sol_parser import sol_parser
 
-def plot_p(sol_data):
+def plot_stochastic_p(sol_data):
 
     p_term_data = sol_data["p_term"]
 
@@ -26,14 +26,14 @@ def plot_p(sol_data):
     for term in terms:
         for bus in buses:
             plt.figure()
-            scen = '0'
-            if sum(p_term_by_term_bus_scen[(term, bus, scen)]) >= 1.0:
-                plt.plot(p_term_by_term_bus_scen[(term, bus, scen)], label=f'Scenario {scen}')
-                plt.title(f'Potencia en terminal {term} - Bus {bus}')
-                plt.xlabel('Tiempo')
-                plt.ylabel('Potencia [KWh]')
-                plt.legend()
-                plt.show()
+            for scen in scenarios:
+                if sum(p_term_by_term_bus_scen[(term, bus, scen)]) >= 1.0:
+                    plt.plot(p_term_by_term_bus_scen[(term, bus, scen)], label=f'Scenario {scen}')
+                    plt.title(f'Potencia en terminal {term} - Bus {bus}')
+                    plt.xlabel('Tiempo')
+                    plt.ylabel('Potencia [KWh]')
+                    plt.legend()
+                    plt.show()
             plt.close()
     p_depo_data = sol_data["p_depot"]
 
@@ -57,20 +57,20 @@ def plot_p(sol_data):
     for depo in depos:
         for bus in buses:
             plt.figure()
-            scen = '0'
-            if sum(p_depo_by_depo_bus_scen[(depo, bus, scen)]) >= 1.0:
-                plt.plot(p_depo_by_depo_bus_scen[(depo, bus, scen)], label=f'Scenario {scen}')
-                plt.title(f'Potencia en deposito {depo} - Bus {bus}')
-                plt.xlabel('Tiempo')
-                plt.ylabel('Potencia [KWh]')
-                plt.legend()
-                plt.show()
+            for scen in scenarios:
+                if sum(p_depo_by_depo_bus_scen[(depo, bus, scen)]) >= 1.0:
+                    plt.plot(p_depo_by_depo_bus_scen[(depo, bus, scen)], label=f'Scenario {scen}')
+                    plt.title(f'Potencia en deposito {depo} - Bus {bus}')
+                    plt.xlabel('Tiempo')
+                    plt.ylabel('Potencia [KWh]')
+                    plt.legend()
+                    plt.show()
             plt.close()
 
 
 if __name__ == "__main__":
     data = sol_parser('logs/sols/solucion_estoca_11-25_15-31.sol')
-    plot_p(data)
+    plot_stochastic_p(data)
 
 
 

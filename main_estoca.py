@@ -5,6 +5,7 @@ import os
 from generate_data import generate_data
 import time
 from pepa_data import generate_data_224
+import json
 # Semilla para reproducibilidad
 np.random.seed(42)
 
@@ -43,9 +44,9 @@ def build_stochastic_model(data):
     theta_depo = data['theta_depo']
 
     # PARAMETROS ESTOCÁSTICOS
-    c_depo_to_term = data['c_depo_to_term_scen'] 
-    c_term_to_depo = data['c_term_to_depo_scen']
-    c_arc = data['c_arc_scen']
+    c_depo_to_term = data['c_depo_to_term'] 
+    c_term_to_depo = data['c_term_to_depo']
+    c_arc = data['c_arc']
     
     # PENALIZACION
     BIG_M_PENALTY = 1000.0 
@@ -276,7 +277,7 @@ def build_stochastic_model(data):
     print("Modelo construido correctamente.")
     return model
 
-def generate_simple_stochastic_data():
+def generate_stochastic_data():
     """Genera una instancia SIMPLE con escenarios estocásticos"""
     
     # Configuracion Básica (1 Linea, 2 Buses, 1 Deposito, 2 Terminales)
@@ -385,12 +386,33 @@ def generate_simple_stochastic_data():
     }
     return data
 
+def export_parameters(data, filepath):
+    """Exporta los parámetros estocásticos a un archivo"""
+    
+    os.makedirs("parameters", exist_ok=True)
+    
+    # Convertir diccionarios complejos a formatos serializables
+    data_to_export = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            # Convert dict with tuple keys to dict with string keys
+            data_to_export[key] = {str(k): v for k, v in value.items()}
+        elif isinstance(value, list):
+            data_to_export[key] = value
+        else:
+            data_to_export[key] = value
+    
+    with open(filepath, 'w') as f:
+        json.dump(data_to_export, f, indent=2, default=str)
+    
+    print(f"Parámetros exportados a: {filepath}")
+
 if __name__ == "__main__":
     ini_time = time.time()
+    exec_time = datetime.now().strftime("%m-%d_%H-%M-%S")
     data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 4, hora_inicio = 5)
+    export_parameters(data, f"parameters/params_estoca_{exec_time}.json")
     # data = generate_data_224()
-    for key, value in data.items():
-        print(f"{key}: {value}")
     model = build_stochastic_model(data)
     
     model.Params.OutputFlag = 1
@@ -399,7 +421,7 @@ if __name__ == "__main__":
     if model.status == GRB.OPTIMAL:
         print(f"\nOBJETIVO ÓPTIMO: {model.objVal:.2f}")
         
-        exec_time = datetime.now().strftime("%m-%d_%H-%M")
+        
         logs_base = "logs"
         paths = [os.path.join(logs_base, "constraints"), os.path.join(logs_base, "sols"), os.path.join(logs_base, "ilps")]
         for p in paths:

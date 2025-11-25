@@ -1,7 +1,7 @@
 import numpy as np
 import random
 
-def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio = 5):
+def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio = 5, stochastic = True):
     """Genera una instancia SIMPLE con escenarios estocásticos"""
     
     # Configuracion Básica (1 Linea, 2 Buses, 1 Deposito, 2 Terminales)
@@ -67,32 +67,44 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     base_c_depo = 5.0
     
     # Diccionarios estocásticos
-    c_depo_to_term_scen = {}
-    c_term_to_depo_scen = {}
-    c_arc_scen = {}
+    c_depo_to_term = {}
+    c_term_to_depo = {}
+    c_arc = {}
     
-    for s in SCENARIOS:
-        # Factor de variabilidad (Normal centrada en 1.0, desv std 0.2)
-        # Algunos escenarios consumiran 20% más, otros menos.
-        factor = np.random.normal(1.0, 0.15) 
-        factor = max(1.3, factor) # Evitar negativos
-        
-        # Llenar diccionarios
-        # Deposito -> Terminal
+    if stochastic:
+        for s in SCENARIOS:
+            # Factor de variabilidad (Normal centrada en 1.0, desv std 0.2)
+            # Algunos escenarios consumiran 20% más, otros menos.
+            factor = np.random.normal(1.0, 0.15) 
+            factor = max(1.3, factor) # Evitar negativos
+            
+            # Llenar diccionarios
+            # Deposito -> Terminal
+            for k in K:
+                for m in M[k]:
+                    d = d_k[k]
+                    o = o_k[k]
+                    c_depo_to_term[(d,o,k,m,s)] = base_c_depo * factor
+                    c_term_to_depo[(o,d,k,m,s)] = base_c_depo * factor
+                    
+                    # Arcos
+                    for l in L_mk[(m,k)]:
+                        for (i,j) in A_k[k]:
+                            # Variabilidad extra por arco
+                            local_factor = np.random.normal(factor, 0.05)
+                            c_arc[(i,j,k,m,l,s)] = base_c_arc * local_factor
+    else:
         for k in K:
             for m in M[k]:
                 d = d_k[k]
                 o = o_k[k]
-                c_depo_to_term_scen[(d,o,k,m,s)] = base_c_depo * factor
-                c_term_to_depo_scen[(o,d,k,m,s)] = base_c_depo * factor
+                c_depo_to_term[(d,o,k,m)] = base_c_depo
+                c_term_to_depo[(o,d,k,m)] = base_c_depo
                 
                 # Arcos
                 for l in L_mk[(m,k)]:
                     for (i,j) in A_k[k]:
-                         # Variabilidad extra por arco
-                        local_factor = np.random.normal(factor, 0.05)
-                        c_arc_scen[(i,j,k,m,l,s)] = base_c_arc * local_factor
-
+                        c_arc[(i,j,k,m,l)] = base_c_arc
     # Empaquetar
     data = {
         'N': N, 'D': D, 'K': K, 'N_k': N_k, 'd_k': d_k, 'o_k': o_k, 'A_k': A_k, 'M': M, 'L': L_mk,
@@ -104,13 +116,9 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
         'p_on_route': p_on_route, 'p_depo': p_depo, 'theta_on_route': theta_on_route, 'theta_depo': theta_depo,
         # Estocasticos
         'SCENARIOS': SCENARIOS, 'PROBS': PROBS,
-        'c_depo_to_term_scen': c_depo_to_term_scen,
-        'c_term_to_depo_scen': c_term_to_depo_scen,
-        'c_arc_scen': c_arc_scen
+        'c_depo_to_term': c_depo_to_term,
+        'c_term_to_depo': c_term_to_depo,
+        'c_arc': c_arc
     }
     return data
 
-data = generate_data()
-
-for key, value in data["PHI_term"].items():
-    print(f"{key}: {value}\n")
