@@ -50,8 +50,8 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     # Parametros Deterministas
     u_k = {K[i]: 350.0 for i in range(num_lineas)} # Bateria chica para forzar carga
     epsilon_up, epsilon_low = 0.95, 0.15
-    p_on_route = {(N_k[k][i], k): 150.0 for i in range(2) for k in K} # Capacidad de carga en ruta
-    p_depo = {D[i]: 50.0 for i in range(len(D))} # Capacidad de carga en deposito
+    p_on_route = {(N_k[k][i], k): 1500.0 for i in range(2) for k in K} # Capacidad de carga en ruta
+    p_depo = {D[i]: 500.0 for i in range(len(D))} # Capacidad de carga en deposito
     theta_on_route, theta_depo = 0.95, 0.95
     psi_on, psi_off = 120.0, 60.0  # Precios Energia
     pi_on, pi_off = 3000.0, 1000.0  # Precios Demanda

@@ -11,24 +11,24 @@ np.random.seed(42)
 def build_stochastic_model(data):
     print("Construyendo modelo estocástico de dos etapas...")
     
-    # --- CONJUNTOS ---
+    # CONJUNTOS
     # Conjuntos deterministas
     N, D, K = data['N'], data['D'], data['K']
     N_k, d_k, o_k = data['N_k'], data['d_k'], data['o_k']
-    M_bus, L_mk = data['M'], data['L'] # Renombre M a M_bus para no confundir con Big-M
+    M_bus, L_mk = data['M'], data['L']
     A_k = data['A_k']
     
-    # Tiempo
+    # TIEMPO
     PHI, Z, H = data['PHI'], data['Z'], data['H']
     Z_peak, H_peak = set(data['Z_peak']), set(data['H_peak'])
     PHI_h, PHI_z = data['PHI_h'], data['PHI_z']
     PHI_term, PHI_depo = data['PHI_term'], data['PHI_depo']
     
-    # --- NUEVO: CONJUNTO DE ESCENARIOS ---
-    SCENARIOS = data['SCENARIOS'] # Lista de indices de escenarios [0, 1, 2...]
-    PROBS = data['PROBS']         # Diccionario de probabilidades {0: 0.1, ...}
+    # ESCENARIOS
+    SCENARIOS = data['SCENARIOS'] # Lista de indices de escenarios
+    PROBS = data['PROBS']         # Diccionario de probabilidades
 
-    # --- PARAMETROS ---
+    # PARAMETROS
     rho, gamma, omega = data['rho'], data['gamma'], data['omega']
     psi_on, psi_off = data['psi_on'], data['psi_off']
     pi_on, pi_off = data['pi_on'], data['pi_off']
@@ -36,39 +36,32 @@ def build_stochastic_model(data):
     u_k = data['u_k']
     epsilon_up, epsilon_low = data['epsilon_up'], data['epsilon_low']
     
-    # Limites Físicos (Deterministas)
+    # Limites Físicos
     p_on_route = data['p_on_route']
     p_depo_cap = data['p_depo']
     theta_on_route = data['theta_on_route']
     theta_depo = data['theta_depo']
 
-    # --- NUEVO: PARAMETROS ESTOCASTICOS ---
-    # Los consumos ahora dependen del escenario 's'
+    # PARAMETROS ESTOCÁSTICOS
     c_depo_to_term = data['c_depo_to_term_scen'] 
     c_term_to_depo = data['c_term_to_depo_scen']
     c_arc = data['c_arc_scen']
     
-    # Penalización Big-M para variables de holgura
+    # PENALIZACION
     BIG_M_PENALTY = 1000.0 
 
     model = Model("Stochastic_Bus_Scheduling")
 
-    # ==========================
-    # VARIABLES DE DECISIÓN
-    # ==========================
+    #VARIABLES
     print("Creando variables...")
 
-    # --- ETAPA 1 (HERE AND NOW) ---
-    # Capacidad Reservada (sigma). NO dependen del escenario.
-    # Estas deciden el Demand Charge (DC).
+    # ETAPA 1
     sigma_term_on  = model.addVars(N, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_term_on")
     sigma_term_off = model.addVars(N, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_term_off")
     sigma_depo_on  = model.addVars(D, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_depo_on")
     sigma_depo_off = model.addVars(D, lb=0.0, vtype=GRB.CONTINUOUS, name="sigma_depo_off")
 
-    # --- ETAPA 2 (WAIT AND SEE) ---
-    # Todas estas variables dependen del escenario 's'
-    
+    # ETAPA 2
     # Potencia de carga real (p)
     p_term = model.addVars(
         [(i,k,m,phi,s) for k in K for m in M_bus[k] for i in N_k[k] for phi in PHI for s in SCENARIOS],
@@ -97,8 +90,8 @@ def build_stochastic_model(data):
         lb=0.0, vtype=GRB.CONTINUOUS, name="e_term_dep"
     )
     
-    # NUEVO: Variables de Holgura (Delta) para evitar infactibilidad
-    # Si falta batería, delta > 0 y pagamos multa.
+    #  Variables de Holgura (Delta) para evitar infactibilidad
+    # Si falta batería, delta > 0 y se paga multa.
     delta_depo_arr = model.addVars(
         [(d_k[k],k,m,s) for k in K for m in M_bus[k] for s in SCENARIOS],
         lb=0.0, vtype=GRB.CONTINUOUS, name="delta_depo_arr"
@@ -108,30 +101,26 @@ def build_stochastic_model(data):
         lb=0.0, vtype=GRB.CONTINUOUS, name="delta_term_arr"
     )
 
-    # Potencia promedio (Auxiliar para linking constraint)
+    # Potencia promedio
     eta_term = model.addVars([(i,z,s) for i in N for z in Z for s in SCENARIOS], 
                              lb=0.0, vtype=GRB.CONTINUOUS, name="eta_term")
     eta_depo = model.addVars([(d,z,s) for d in D for z in Z for s in SCENARIOS], 
                              lb=0.0, vtype=GRB.CONTINUOUS, name="eta_depo")
 
-    # ==========================
+
     # RESTRICCIONES
-    # ==========================
     print("Creando restricciones...")
 
-    # Iteramos sobre cada escenario para las restricciones operativas
     for s in SCENARIOS:
         
-        # --- BALANCE DE ENERGÍA (Por escenario) ---
-        
-        # R1: Energía inicial (Determinista, salen llenos)
+        # R1: Energía inicial 
         model.addConstrs(
             (e_depo_dep[d_k[k],k,m,s] == epsilon_up * u_k[k] 
              for k in K for m in M_bus[k]),
             name=f"R1_init_S{s}"
         )
 
-        # R2: Deposito a Terminal (Usa consumo estocástico c[s])
+        # R2: Deposito a Terminal
         model.addConstrs(
             (e_term_dep[o_k[k], k, m, min(L_mk[(m,k)]), s] ==
              e_depo_dep[d_k[k], k, m, s] - c_depo_to_term[(d_k[k], o_k[k], k, m, s)]
@@ -164,7 +153,7 @@ def build_stochastic_model(data):
             name=f"R28_charge_mid_S{s}"
         )
         
-        # R29: Carga en terminal inicial (Loop siguiente)
+        # R29: Carga en terminal inicial
         model.addConstrs(
             (e_term_dep[o_k[k], k, m, l, s] ==
              e_term_arr[o_k[k], k, m, l-1, s] +
@@ -173,7 +162,7 @@ def build_stochastic_model(data):
             name=f"R29_charge_loop_S{s}"
         )
 
-        # R30: Carga en deposito (Overnight)
+        # R30: Carga en deposito
         model.addConstrs(
             (e_depo_dep[d_k[k], k, m, s] ==
              e_depo_arr[d_k[k], k, m, s] +
@@ -181,24 +170,22 @@ def build_stochastic_model(data):
              for k in K for m in M_bus[k]),
             name=f"R30_charge_depo_S{s}"
         )
-        
-        # --- RESTRICCIONES DE POTENCIA (Tiempo y Física) ---
-        
-        # Potencia 0 si no está en ventana (Idling)
+         
+        # Potencia 0 si no está en ventana de idling
         for k in K:
             for m in M_bus[k]:
                 for i in N_k[k]:
                     allowed = set().union(*(set(PHI_term.get((i, k, m, l), [])) for l in L_mk[(m,k)]))
                     for phi in PHI:
                         if phi not in allowed:
-                            p_term[i, k, m, phi, s].ub = 0.0 # Fijar cota superior a 0 es más eficiente
+                            p_term[i, k, m, phi, s].ub = 0.0 
                             
                 allowed_depo = set(PHI_depo.get((k, m), []))
                 for phi in PHI:
                     if phi not in allowed_depo:
                         p_depot[d_k[k], k, m, phi, s].ub = 0.0
 
-        # R34: Limite FISICO del cargador (No depende de sigma, es hardware)
+        # R34: Limite del cargador
         model.addConstrs(
             (quicksum(p_term[i, k, m, phi, s] for m in M_bus[k]) <= p_on_route[(i, k)]
              for k in K for i in N_k[k] for phi in PHI),
@@ -210,7 +197,7 @@ def build_stochastic_model(data):
             name=f"R37_phys_lim_depo_S{s}"
         )
 
-        # --- CÁLCULO DE DEMANDA PROMEDIO (Eta) ---
+        # Demanda promedio
         model.addConstrs(
             (eta_term[i, z, s] == (1.0 / gamma) *
              quicksum(p_term[i, k, m, phi, s] * rho for phi in PHI_z[z] for k in K for m in M_bus[k] if i in N_k[k])
@@ -224,31 +211,25 @@ def build_stochastic_model(data):
             name=f"calc_eta_depo_S{s}"
         )
 
-        # --- LÍMITES DE BATERÍA CON SLACK (RECOURSE) ---
-        # Aquí agregamos el + delta para permitir violaciones pagando multa
-        
-        # Llegada al deposito (Con Slack)
+        # Baterias deben cubrir demanda mínima (con holgura)
+        # Llegada al deposito
         model.addConstrs(
             (e_depo_arr[d_k[k], k, m, s] + delta_depo_arr[d_k[k],k,m,s] >= epsilon_low * u_k[k]
              for k in K for m in M_bus[k]), 
             name=f"lb_depo_arr_S{s}"
         )
-        # Llegada a terminal (Con Slack)
+        # Llegada a terminal
         model.addConstrs(
             (e_term_arr[i, k, m, l, s] + delta_term_arr[i,k,m,l,s] >= epsilon_low * u_k[k]
              for k in K for m in M_bus[k] for l in L_mk[(m,k)] for i in N_k[k]), 
             name=f"lb_term_arr_S{s}"
         )
 
-        # Cota superior (Rígida, no necesitamos slack hacia arriba)
         model.addConstrs((e_depo_arr[d_k[k], k, m, s] <= epsilon_up * u_k[k] for k in K for m in M_bus[k]), name=f"ub_depo_arr_S{s}")
         model.addConstrs((e_term_arr[i, k, m, l, s] <= epsilon_up * u_k[k] for k in K for m in M_bus[k] for l in L_mk[(m,k)] for i in N_k[k]), name=f"ub_term_arr_S{s}")
 
 
-    # ==========================
-    # LINKING CONSTRAINTS (Crucial para Dos Etapas)
-    # ==========================
-    # La capacidad reservada (Etapa 1) debe ser mayor que la demanda de CUALQUIER escenario
+    # La capacidad reservada (Etapa 1) debe ser mayor que la demanda
     print("Creando linking constraints...")
     
     for s in SCENARIOS:
@@ -258,22 +239,21 @@ def build_stochastic_model(data):
         model.addConstrs((sigma_depo_off[d] >= eta_depo[d, z, s] for d in D for z in Z if z not in Z_peak), name=f"link_depo_off_S{s}")
 
 
-    # ==========================
+
     # FUNCIÓN OBJETIVO
-    # ==========================
     print("Creando función objetivo...")
     
-    # 1. Costo Determinista (Etapa 1): Demand Charge
+    # Cargos por demanda
     DC_cost = pi_on  * (quicksum(sigma_term_on[i]  for i in N) + quicksum(sigma_depo_on[d]  for d in D)) \
             + pi_off * (quicksum(sigma_term_off[i] for i in N) + quicksum(sigma_depo_off[d] for d in D))
 
-    # 2. Costo Esperado (Etapa 2): Energy Charge + Penalties
+    # Coste del energía
     Expected_Second_Stage = 0
     
     for s in SCENARIOS:
         prob = PROBS[s]
         
-        # Energy Cost para este escenario
+        # EC por escenario
         EC_on_s = quicksum(psi_on * (quicksum(p_term[i,k,m,phi,s]*rho for phi in PHI_h[h] for i in N_k[k]) +
                                      quicksum(p_depot[d_k[k],k,m,phi,s]*rho for phi in PHI_h[h]))
                            for k in K for m in M_bus[k] for h in H if h in H_peak)
@@ -282,7 +262,7 @@ def build_stochastic_model(data):
                                        quicksum(p_depot[d_k[k],k,m,phi,s]*rho for phi in PHI_h[h]))
                             for k in K for m in M_bus[k] for h in H if h not in H_peak)
                             
-        # Penalty Cost para este escenario (Suma de violaciones)
+        # Penalizacion 
         Penalty_s = BIG_M_PENALTY * (
             quicksum(delta_depo_arr[d_k[k],k,m,s] for k in K for m in M_bus[k]) +
             quicksum(delta_term_arr[i,k,m,l,s] for k in K for m in M_bus[k] for l in L_mk[(m,k)] for i in N_k[k])
@@ -407,7 +387,7 @@ def generate_simple_stochastic_data():
 
 if __name__ == "__main__":
     ini_time = time.time()
-    data = generate_data(num_lineas = 1, num_buses = 4, num_vueltas = 12, hora_inicio = 5)
+    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 4, hora_inicio = 5)
     # data = generate_data_224()
     for key, value in data.items():
         print(f"{key}: {value}")
@@ -419,12 +399,17 @@ if __name__ == "__main__":
     if model.status == GRB.OPTIMAL:
         print(f"\nOBJETIVO ÓPTIMO: {model.objVal:.2f}")
         
-        # Mostrar Capacidad Reservada (Decisión Etapa 1)
+        exec_time = datetime.now().strftime("%m-%d_%H-%M")
+        logs_base = "logs"
+        paths = [os.path.join(logs_base, "constraints"), os.path.join(logs_base, "sols"), os.path.join(logs_base, "ilps")]
+        for p in paths:
+            os.makedirs(p, exist_ok=True)
+
+        model.write(os.path.join(logs_base, "sols", f"solucion_estoca_{exec_time}.sol"))
         for v in model.getVars():
             if "sigma" in v.VarName and v.X > 0.01:
                 print(f"{v.VarName}: {v.X:.2f} kW")
         
-        # Mostrar si hubo multas (Slack activado)
         total_penalty = 0
         for v in model.getVars():
             if "delta" in v.VarName and v.X > 0.01:
