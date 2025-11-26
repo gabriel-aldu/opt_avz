@@ -410,7 +410,7 @@ def export_parameters(data, filepath):
 if __name__ == "__main__":
     ini_time = time.time()
     exec_time = datetime.now().strftime("%m-%d_%H-%M-%S")
-    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 4, hora_inicio = 5)
+    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 12, hora_inicio = 5)
     export_parameters(data, f"parameters/params_estoca_{exec_time}.json")
     # data = generate_data_224()
     model = build_stochastic_model(data)

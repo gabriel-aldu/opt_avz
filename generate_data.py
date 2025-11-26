@@ -75,8 +75,7 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
         for s in SCENARIOS:
             # Factor de variabilidad (Normal centrada en 1.0, desv std 0.2)
             # Algunos escenarios consumiran 20% más, otros menos.
-            factor = np.random.normal(1.0, 0.15) 
-            factor = max(1.3, factor) # Evitar negativos
+            factor = np.random.normal(1.0, 0.5) 
             
             # Llenar diccionarios
             # Deposito -> Terminal

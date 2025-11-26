@@ -438,7 +438,7 @@ def load_data():
 
 if __name__ == "__main__":
 
-    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 4, hora_inicio = 5, stochastic=False)
+    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 12, hora_inicio = 5, stochastic=False)
     model = build_model(data)
     model.Params.OutputFlag = 1
     model.optimize()
