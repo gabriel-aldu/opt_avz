@@ -19,25 +19,26 @@ def plot_stochastic_p(sol_data):
         terms.add(term)
         buses.add(bus)
         scenarios.add(scen)
-        if (term, bus) not in p_term_by_term_bus_scen.keys():
-            p_term_by_term_bus_scen[(term, bus)] =[]
-        p_term_by_term_bus_scen[(term, bus)].append(float(value))
+        if (term, bus, scen) not in p_term_by_term_bus_scen.keys():
+            p_term_by_term_bus_scen[(term, bus, scen)] = []
+        p_term_by_term_bus_scen[(term, bus, scen)].append(float(value))
 
     for term in terms:
         for bus in buses:
             plt.figure()
             for scen in scenarios:
-                if sum(p_term_by_term_bus_scen[(term, bus)]) >= 1.0:
-                    plt.plot(p_term_by_term_bus_scen[(term, bus)], label=f'Scenario {scen}')
-                    plt.title(f'Potencia en terminal {term} - Bus {bus}')
-                    plt.xlabel('Tiempo')
-                    plt.ylabel('Potencia [KWh]')
-                    plt.legend()
-                    plt.show()
+                if sum(p_term_by_term_bus_scen[(term, bus, scen)]) >= 1.0:
+                    plt.plot(p_term_by_term_bus_scen[(term, bus, scen)], label=f'Scenario {scen}')
+            plt.title(f'Potencia en terminal {term} - Bus {bus}')
+            plt.xlabel('Tiempo')
+            plt.ylabel('Potencia [KWh]')
+            plt.legend()
+            plt.show()
             plt.close()
+
     p_depo_data = sol_data["p_depot"]
 
-    p_depo_by_depo_bus = {}
+    p_depo_by_depo_bus_scen = {}
 
     depos = set()
     buses = set()
@@ -50,21 +51,21 @@ def plot_stochastic_p(sol_data):
         depos.add(depo)
         buses.add(bus)
         scenarios.add(scen)
-        if (depo, bus) not in p_depo_by_depo_bus.keys():
-            p_depo_by_depo_bus[(depo, bus)] =[]
-        p_depo_by_depo_bus[(depo, bus)].append(float(value))
+        if (depo, bus, scen) not in p_depo_by_depo_bus_scen.keys():
+            p_depo_by_depo_bus_scen[(depo, bus, scen)] = []
+        p_depo_by_depo_bus_scen[(depo, bus, scen)].append(float(value))
 
     for depo in depos:
         for bus in buses:
             plt.figure()
             for scen in scenarios:
-                if sum(p_depo_by_depo_bus[(depo, bus)]) >= 1.0:
-                    plt.plot(p_depo_by_depo_bus[(depo, bus)], label=f'Scenario {scen}')
-                    plt.title(f'Potencia en deposito {depo} - Bus {bus}')
-                    plt.xlabel('Tiempo')
-                    plt.ylabel('Potencia [KWh]')
-                    plt.legend()
-                    plt.show()
+                if sum(p_depo_by_depo_bus_scen[(depo, bus, scen)]) >= 1.0:
+                    plt.plot(p_depo_by_depo_bus_scen[(depo, bus, scen)], label=f'Scenario {scen}')
+            plt.title(f'Potencia en deposito {depo} - Bus {bus}')
+            plt.xlabel('Tiempo')
+            plt.ylabel('Potencia [KWh]')
+            plt.legend()
+            plt.show()
             plt.close()
 
 def plot_det_p(sol_data):
@@ -129,8 +130,8 @@ def plot_det_p(sol_data):
 
 
 if __name__ == "__main__":
-    data = sol_parser('logs/sols/solucion_estoca_11-25_21-27-25.sol')
-    plot_stochastic_p(data)
+    data = sol_parser('logs/sols/solucion_det_20b_100l.sol')
+    plot_det_p(data)
 
 
 

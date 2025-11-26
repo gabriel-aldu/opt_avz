@@ -438,7 +438,7 @@ def load_data():
 
 if __name__ == "__main__":
 
-    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 12, hora_inicio = 5, stochastic=False)
+    data = generate_data(num_lineas = 1, num_buses = 20, num_vueltas = 100, hora_inicio = 5, stochastic=False)
     model = build_model(data)
     model.Params.OutputFlag = 1
     model.optimize()
@@ -460,7 +460,7 @@ if __name__ == "__main__":
             for constr in model.getConstrs():
                 f.write(f"{constr.ConstrName},{constr.Slack}\n")
 
-        model.write(os.path.join(logs_base, "sols", f"solucion_det_{exec_time}.sol"))
+        model.write(os.path.join(logs_base, "sols", f"solucion_det_20b_100l.sol"))
 
     elif model.status == GRB.INFEASIBLE:
         print("Modelo infactible")

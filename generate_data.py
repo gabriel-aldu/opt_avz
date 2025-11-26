@@ -4,10 +4,10 @@ import random
 def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio = 5, stochastic = True):
     """Genera una instancia SIMPLE con escenarios estocásticos"""
     
-    # Configuracion Básica (1 Linea, 2 Buses, 1 Deposito, 2 Terminales)
-    K = [f"L{i + 1}" for i in range(num_lineas)] # Solo una linea
+
+    K = [f"L{i + 1}" for i in range(num_lineas)] 
     N = [f"{linea}-A" for linea in K] + [f"{linea}-B" for linea in K]  # 2 nodos por linea
-    D = [f"D{i + 1}" for i in range(num_lineas // 3 + 1)] # 1 deposito cada 5 lineas
+    D = [f"D{i + 1}" for i in range(num_lineas // 3 + 1)] # 1 deposito cada 3 lineas
     
     
     N_k = {K[i]: [N[i],N[i + num_lineas]] for i in range(num_lineas)}
@@ -19,7 +19,7 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     
     # Tiempo
     HOURS = 24
-    RES_MIN = 1 # Bloques de 1 hora para que sea rapido
+    RES_MIN = 10 
     SLOTS_PER_HOUR = 60 // RES_MIN
     T = HOURS * SLOTS_PER_HOUR
     PHI = list(range(1, T + 1))
@@ -28,18 +28,17 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     Z = H[:]
     PHI_z = {z: PHI_h[z] for z in Z}
     
-    # Horas punta (ej. tarde)
     H_peak = {7, 8 , 9 , 10 , 18, 19, 20, 21}
     Z_peak = list(H_peak)
     
     rho = 1.0 / SLOTS_PER_HOUR
     gamma = SLOTS_PER_HOUR
     
-    # Ventanas de carga (Simplificadas para que calcen)
-    # Asumimos que B1 llega a B a las 10am y a las 14pm, etc.
+    # Ventanas de carga 
     PHI_term = {
         #("B", "L1", "B1", 1): PHI_h[10],
-        (N_k[K[i]][i], K[i], M[K[i]][j], v + 1): PHI_h[hora_inicio + v] for i in range(num_lineas) for j in range(num_buses) for v in range(num_vueltas)
+        (N_k[K[i]][i], K[i], M[K[i]][j], v + 1): PHI_h[h] for i in range(num_lineas) 
+        for j in range(num_buses) for v in range(num_vueltas) for h in range(11,17)
     
     }
     PHI_depo = {
@@ -48,13 +47,13 @@ def generate_data(num_lineas = 2, num_buses = 4, num_vueltas = 12, hora_inicio =
     }
     
     # Parametros Deterministas
-    u_k = {K[i]: 350.0 for i in range(num_lineas)} # Bateria chica para forzar carga
+    u_k = {K[i]: 350.0 for i in range(num_lineas)} 
     epsilon_up, epsilon_low = 0.95, 0.15
-    p_on_route = {(N_k[k][i], k): 1500.0 for i in range(2) for k in K} # Capacidad de carga en ruta
-    p_depo = {D[i]: 500.0 for i in range(len(D))} # Capacidad de carga en deposito
+    p_on_route = {(N_k[k][i], k): 150.0 * num_buses * num_vueltas * 0.5 for i in range(2) for k in K} 
+    p_depo = {D[i]: 150.0 * num_buses * num_vueltas * 1.1 for i in range(len(D))} 
     theta_on_route, theta_depo = 0.95, 0.95
-    psi_on, psi_off = 120.0, 60.0  # Precios Energia
-    pi_on, pi_off = 3000.0, 1000.0  # Precios Demanda
+    psi_on, psi_off = 120.0, 60.0 
+    pi_on, pi_off = 3000.0, 1000.0  
     omega = 1.0/30.0
 
     # --- GENERACIÓN ESTOCÁSTICA ---

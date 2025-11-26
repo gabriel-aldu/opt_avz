@@ -28,7 +28,7 @@ def plot_stochastic_e(sol_data):
 
     buses = sorted(set([key[2] for key in e_depo_dep_data.keys()]), key=lambda x: (int(x) if str(x).isdigit() else x))
     scenarios = sorted(set([key[3] for key in e_depo_dep_data.keys()]), key=lambda s: (int(s) if str(s).isdigit() else s))
-
+    max_loops = max([int(key[3]) for key in e_term_arr_data.keys()]) + 1
     for bus in buses:
         # collect ordered time steps for this bus
         times = sorted(set([k[1] for k in e_depo_dep_data.keys() if k[2] == bus]),
@@ -42,8 +42,8 @@ def plot_stochastic_e(sol_data):
             stage_instructions.append(('depo_dep', time))
             x_labels.append(f'e_depo_dep_t{time}')
             # terminal entries/exits for both terms and loops
-            for term in ['L1-A', 'L1-B']:
-                for loop in range(0, 4):
+            for loop in range(0, max_loops):
+                for term in ['L1-A', 'L1-B']:
                     loop_str = str(loop)
                     stage_instructions.append(('term_arr', time, term, loop_str))
                     x_labels.append(f'e_term_arr_{term}_loop_{loop}')
@@ -86,6 +86,33 @@ def plot_stochastic_e(sol_data):
         plt.ylabel("% Energía")
         plt.title(f"Energía para el Bus {bus} (todos los escenarios)")
         plt.xticks(rotation=90)
+        # set at most 10 xticks, always including first and last
+        n_ticks = 10
+        if len(x_labels) <= n_ticks:
+            plt.xticks(rotation=90)
+        else:
+            def choose_ticks(n_labels, n_ticks):
+                last = n_labels - 1
+                # pick (n_ticks-2) intermediate indices evenly, then ensure uniqueness
+                delta_labels = int(n_labels / (n_ticks))
+                mids = np.arange(delta_labels, delta_labels * (n_ticks) , delta_labels)
+                print(mids)
+                mids = [int(round(x)) for x in mids]
+                idxs = [0] + sorted(set(mids)) + [last]
+                # if duplicates shortened the list, fill sequentially until we have n_ticks
+                cur = 1
+                while len(idxs) < n_ticks + 1 and cur < last:
+                    if cur not in idxs:
+                        idxs.insert(-1, cur)
+                    cur += 1
+                # if still too many, remove from near the middle
+                while len(idxs) > n_ticks + 1:
+                    idxs.pop(-2)
+                return idxs
+
+            idxs = choose_ticks(len(x_labels), n_ticks)
+            labels = [x_labels[i] for i in idxs]
+            plt.xticks(idxs, labels, rotation=90)
         plt.legend()
         plt.tight_layout()
         plt.show()
@@ -98,7 +125,7 @@ def plot_det_e(sol_data):
     e_term_dep_data = {key: sol_data['e_term_dep'][key] for key in sol_data['e_term_dep']}
 
     buses = set([key[2] for key in e_depo_dep_data.keys()])
-
+    max_loops = max([int(key[3]) for key in e_term_arr_data.keys()]) + 1
     for bus in buses:
         x_values = []
         y_values = []
@@ -107,8 +134,9 @@ def plot_det_e(sol_data):
                 depot_value = e_depo_dep_data[key]
                 x_values.append(f'e_depo_dep_{key[2]}')
                 y_values.append(depot_value)
-                for term in ['L1-A', 'L1-B']:
-                    for loop in range(0, 4):
+                
+                for loop in range(0, max_loops):
+                    for term in ['L1-A', 'L1-B']:
                         arr_key = (term, key[1], key[2], str(loop))
                         dep_key = (term, key[1], key[2], str(loop))
 
@@ -126,10 +154,36 @@ def plot_det_e(sol_data):
         plt.xlabel("Etapa del día")
         plt.ylabel("% Energía")
         plt.title(f"Energía para el Bus {bus}")
-        plt.xticks(rotation=90)
+        # set at most 10 xticks, always including first and last
+        n_ticks = 10
+        if len(x_values) <= n_ticks:
+            plt.xticks(rotation=90)
+        else:
+            def choose_ticks(n_labels, n_ticks):
+                last = n_labels - 1
+                # pick (n_ticks-2) intermediate indices evenly, then ensure uniqueness
+                delta_labels = int(n_labels / (n_ticks))
+                mids = np.arange(delta_labels, delta_labels * (n_ticks) , delta_labels)
+                print(mids)
+                mids = [int(round(x)) for x in mids]
+                idxs = [0] + sorted(set(mids)) + [last]
+                # if duplicates shortened the list, fill sequentially until we have n_ticks
+                cur = 1
+                while len(idxs) < n_ticks + 1 and cur < last:
+                    if cur not in idxs:
+                        idxs.insert(-1, cur)
+                    cur += 1
+                # if still too many, remove from near the middle
+                while len(idxs) > n_ticks + 1:
+                    idxs.pop(-2)
+                return idxs
+
+            idxs = choose_ticks(len(x_values), n_ticks)
+            labels = [x_values[i] for i in idxs]
+            plt.xticks(idxs, labels, rotation=90)
         plt.tight_layout()
         plt.show()
 
 if __name__ == "__main__":
-    sol_data = sol_parser('logs/sols/solucion_estoca_11-25_21-27-25.sol')
-    plot_stochastic_e(sol_data)
+    sol_data = sol_parser('logs/sols/solucion_det_20b_100l.sol')
+    plot_det_e(sol_data)

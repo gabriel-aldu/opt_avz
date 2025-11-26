@@ -4,7 +4,6 @@ from datetime import datetime
 import os
 from generate_data import generate_data
 import time
-from pepa_data import generate_data_224
 import json
 # Semilla para reproducibilidad
 np.random.seed(42)
@@ -410,7 +409,7 @@ def export_parameters(data, filepath):
 if __name__ == "__main__":
     ini_time = time.time()
     exec_time = datetime.now().strftime("%m-%d_%H-%M-%S")
-    data = generate_data(num_lineas = 1, num_buses = 2, num_vueltas = 12, hora_inicio = 5)
+    data = generate_data(num_lineas = 1, num_buses = 20, num_vueltas = 100, hora_inicio = 5)
     export_parameters(data, f"parameters/params_estoca_{exec_time}.json")
     # data = generate_data_224()
     model = build_stochastic_model(data)
@@ -427,7 +426,7 @@ if __name__ == "__main__":
         for p in paths:
             os.makedirs(p, exist_ok=True)
 
-        model.write(os.path.join(logs_base, "sols", f"solucion_estoca_{exec_time}.sol"))
+        model.write(os.path.join(logs_base, "sols", f"solucion_estoca_20b_100l.sol"))
         for v in model.getVars():
             if "sigma" in v.VarName and v.X > 0.01:
                 print(f"{v.VarName}: {v.X:.2f} kW")
